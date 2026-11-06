@@ -60,6 +60,16 @@ export function PreviewChat({
   const threadRef = useRef<HTMLDivElement>(null);
   const [liveJobs, setLiveJobs] = useState(jobs);
   const [liveRunning, setLiveRunning] = useState(running);
+  const [seenJobs, setSeenJobs] = useState(jobs);
+  const [seenRunning, setSeenRunning] = useState(running);
+  if (jobs !== seenJobs) {
+    setSeenJobs(jobs);
+    setLiveJobs(jobs);
+  }
+  if (running !== seenRunning) {
+    setSeenRunning(running);
+    setLiveRunning(running);
+  }
   const jobRunning =
     liveRunning || liveJobs.some((job) => job.status === "QUEUED" || job.status === "RUNNING");
   const waitingPlan = liveJobs.find((job) => job.status === "WAITING" && job.plan);
@@ -70,11 +80,6 @@ export function PreviewChat({
   const showGenerating = hasRepo && pages.length === 0 && (jobRunning || shownJob?.status === "FAILED");
   const canChat = hasRepo;
   const chrome = useWorkspaceChrome();
-
-  useEffect(() => {
-    setLiveJobs(jobs);
-    setLiveRunning(running);
-  }, [jobs, running]);
 
   useEffect(() => {
     if (!hasRepo || !liveRunning) return;

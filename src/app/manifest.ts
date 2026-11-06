@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { brandPrimary, MARK_WHITE_ON_BLACK, productName } from "@/lib/brand";
+import { MARK_WHITE_ON_BLACK, productName } from "@/lib/brand";
 
 export default function manifest(): MetadataRoute.Manifest {
   const name = productName();

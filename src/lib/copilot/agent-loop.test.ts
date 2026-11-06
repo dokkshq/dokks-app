@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runAgentLoop } from "@/lib/copilot/agent-loop";
-import type { CompletionRequest, CopilotProvider } from "@/lib/copilot/providers";
+import type { CopilotProvider } from "@/lib/copilot/providers";
 
 function provider(steps: string[]): CopilotProvider {
   let index = 0;
@@ -8,7 +8,7 @@ function provider(steps: string[]): CopilotProvider {
     id: "fake",
     model: "test",
     task: "heavy",
-    async complete(_request: CompletionRequest) {
+    async complete() {
       const text = steps[Math.min(index, steps.length - 1)] ?? "";
       index += 1;
       return {

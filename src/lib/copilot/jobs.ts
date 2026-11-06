@@ -6,7 +6,7 @@ import {
   type SpendLedger,
 } from "@/lib/copilot/caps";
 import { estimateCostUsd, ratesFromEnv, reserveTokens } from "@/lib/copilot/cost";
-import { selectModel, type TaskSize } from "@/lib/copilot/models";
+import { type TaskSize } from "@/lib/copilot/models";
 import {
   resolveProvider,
   type CompletionRequest,
@@ -32,7 +32,6 @@ export async function prepareCopilotJob(args: {
   provider?: CopilotProvider;
 }): Promise<PreparedJob> {
   const env = args.env ?? process.env;
-  const choice = selectModel(args.task, env);
   const provider = args.provider ?? resolveProvider(args.task, env);
   const rates = ratesFromEnv(env);
   const estimateUsd = estimateCostUsd(reserveTokens(args.task), rates);

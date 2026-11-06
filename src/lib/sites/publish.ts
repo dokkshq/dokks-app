@@ -325,6 +325,7 @@ export function shouldPublishImmediately(args: {
   source: RevisionSource;
 }): boolean {
   // Generated docs stay an editable draft. Publishing is a separate owner action.
+  void args;
   return false;
 }
 

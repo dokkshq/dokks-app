@@ -95,7 +95,11 @@ export function BrandingForm({
           name="logoLight"
           accept="image/png,image/jpeg,image/webp"
           hint="PNG, JPEG, or WebP. Max 2 MB."
-          asset={light}
+          url={light.url}
+          removed={light.removed}
+          inputRef={light.inputRef}
+          onFile={light.onFile}
+          onRemove={light.remove}
           frameClassName="bg-white"
         />
         <AssetField
@@ -103,7 +107,11 @@ export function BrandingForm({
           name="logoDark"
           accept="image/png,image/jpeg,image/webp"
           hint="Shown when the docs are dark."
-          asset={darkLogo}
+          url={darkLogo.url}
+          removed={darkLogo.removed}
+          inputRef={darkLogo.inputRef}
+          onFile={darkLogo.onFile}
+          onRemove={darkLogo.remove}
           frameClassName="bg-neutral-950"
         />
         <AssetField
@@ -111,7 +119,11 @@ export function BrandingForm({
           name="favicon"
           accept="image/png,image/jpeg,image/webp,image/x-icon,.ico"
           hint="PNG, JPEG, WebP, or ICO. Max 2 MB."
-          asset={favicon}
+          url={favicon.url}
+          removed={favicon.removed}
+          inputRef={favicon.inputRef}
+          onFile={favicon.onFile}
+          onRemove={favicon.remove}
           frameClassName="bg-muted"
           square
         />
@@ -260,7 +272,11 @@ function AssetField({
   name,
   accept,
   hint,
-  asset,
+  url,
+  removed,
+  inputRef,
+  onFile,
+  onRemove,
   frameClassName,
   square = false,
 }: {
@@ -268,16 +284,21 @@ function AssetField({
   name: string;
   accept: string;
   hint: string;
-  asset: AssetController;
+  url: string | null;
+  removed: boolean;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onFile: (file: File | undefined) => void;
+  onRemove: () => void;
   frameClassName: string;
   square?: boolean;
 }) {
+  const chosen = url !== null && url.startsWith("blob:") ? "1" : "0";
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm">{label}</span>
-        {asset.url ? (
-          <button type="button" onClick={asset.remove} className="text-xs text-muted-foreground hover:text-foreground">
+        {url ? (
+          <button type="button" onClick={onRemove} className="text-xs text-muted-foreground hover:text-foreground">
             Remove
           </button>
         ) : null}
@@ -289,9 +310,9 @@ function AssetField({
           frameClassName,
         )}
       >
-        {asset.url ? (
+        {url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={asset.url} alt="" className="max-h-12 max-w-[80%] object-contain" />
+          <img src={url} alt="" className="max-h-12 max-w-[80%] object-contain" />
         ) : (
           <span className="flex items-center gap-1.5 text-xs text-neutral-500">
             <ImagePlus className="size-3.5" />
@@ -299,16 +320,16 @@ function AssetField({
           </span>
         )}
         <input
-          ref={asset.inputRef}
+          ref={inputRef}
           type="file"
           name={name}
           accept={accept}
           className="sr-only"
-          onChange={(event) => asset.onFile(event.currentTarget.files?.[0])}
+          onChange={(event) => onFile(event.currentTarget.files?.[0])}
         />
       </label>
-      <input type="hidden" name={`remove${name[0]?.toUpperCase() ?? ""}${name.slice(1)}`} value={asset.removed ? "1" : "0"} />
-      <input type="hidden" name={`${name}Chosen`} value={asset.url?.startsWith("blob:") ? "1" : "0"} />
+      <input type="hidden" name={`remove${name[0]?.toUpperCase() ?? ""}${name.slice(1)}`} value={removed ? "1" : "0"} />
+      <input type="hidden" name={`${name}Chosen`} value={chosen} />
       <p className="text-xs text-muted-foreground">{hint}</p>
     </div>
   );
@@ -351,8 +372,6 @@ function ChoiceGroup({
     </fieldset>
   );
 }
-
-type AssetController = ReturnType<typeof useAsset>;
 
 function useAsset(saved: string | null) {
   const [url, setUrl] = useState<string | null>(saved);
