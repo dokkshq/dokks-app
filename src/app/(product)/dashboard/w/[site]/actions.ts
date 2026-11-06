@@ -215,9 +215,9 @@ export async function saveWorkspaceAction(formData: FormData) {
       },
     });
   } else if (kind === "settings") {
-    const reviewMode = String(formData.get("reviewMode") ?? "");
-    if (reviewMode !== "AUTO_PUBLISH" && reviewMode !== "REVIEW") {
-      return redirectWithToast(pathFor(site.subdomain, "/settings"), "error", "Choose a publishing mode.");
+    const reviewMode = String(formData.get("reviewMode") ?? "REVIEW");
+    if (reviewMode !== "REVIEW") {
+      return redirectWithToast(pathFor(site.subdomain, "/settings"), "error", "Choose draft.");
     }
     await prisma.site.update({
       where: { id: site.id },

@@ -38,18 +38,10 @@ export default async function SettingsSection({ params }: { params: Promise<{ si
           Hide previews from search
           <Checkbox name="previewNoindex" defaultChecked={site.previewNoindex} />
         </label>
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm">Publishing</p>
-          <RadioGroup name="reviewMode" defaultValue={site.reviewMode} className="flex gap-3 text-sm">
-            <label className="flex items-center gap-2">
-              <Radio value="AUTO_PUBLISH" />
-              Auto-publish
-            </label>
-            <label className="flex items-center gap-2">
-              <Radio value="REVIEW" />
-              Review first
-            </label>
-          </RadioGroup>
+        <input type="hidden" name="reviewMode" value="REVIEW" />
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <span>Publishing</span>
+          <span>Draft</span>
         </div>
         <div className="flex items-center justify-between text-sm">
           <span>Repository</span>

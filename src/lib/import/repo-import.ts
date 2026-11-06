@@ -101,7 +101,7 @@ function validateImport(input: ImportRepoInput): ValidatedImport | ImportResult 
 
   const reviewMode = input.reviewMode.trim().toUpperCase();
   if (reviewMode !== "AUTO_PUBLISH" && reviewMode !== "REVIEW") {
-    return invalid("reviewMode", "Choose auto-publish or review first.");
+    return invalid("reviewMode", "Choose a publishing mode.");
   }
 
   return {

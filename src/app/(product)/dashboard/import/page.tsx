@@ -139,11 +139,7 @@ export default async function ImportPage({
                     {repo.imported ? (
                       <span className="text-sm text-muted-foreground">Imported</span>
                     ) : (
-                      <ImportRepoDialog
-                        repo={repo}
-                        docsRoot={docsRoot}
-                        isFirstSite={view.isFirstSite}
-                      />
+                      <ImportRepoDialog repo={repo} docsRoot={docsRoot} />
                     )}
                   </div>
                 ))}

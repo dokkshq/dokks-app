@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
-import { brandPrimary, productName } from "@/lib/brand";
+import { brandPrimary } from "@/lib/brand";
 import {
   Dialog,
   DialogClose,
@@ -21,7 +21,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Radio, RadioGroup } from "@/components/ui/radio-group";
 import { SelectField } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ImportField, ImportFormState } from "@/lib/import/import-state";
@@ -32,14 +31,13 @@ import { importRepository } from "./actions";
 type ImportRepoDialogProps = {
   repo: ImportRepo;
   docsRoot: string;
-  isFirstSite: boolean;
 };
 
 function errorFor(state: ImportFormState, field: ImportField): string | undefined {
   return state.error?.field === field ? state.error.message : undefined;
 }
 
-function ImportForm({ repo, docsRoot, isFirstSite }: ImportRepoDialogProps) {
+function ImportForm({ repo, docsRoot }: ImportRepoDialogProps) {
   const id = useId();
   const [state, formAction, pending] = useActionState(
     importRepository,
@@ -47,7 +45,6 @@ function ImportForm({ repo, docsRoot, isFirstSite }: ImportRepoDialogProps) {
   );
   const [subdomain, setSubdomain] = useState(repo.suggestedSubdomain);
   const [primaryColor, setPrimaryColor] = useState(brandPrimary());
-  const [reviewMode, setReviewMode] = useState<"AUTO_PUBLISH" | "REVIEW">("AUTO_PUBLISH");
   const formError = state.error?.field === "form" ? state.error.message : undefined;
 
   useEffect(() => {
@@ -154,48 +151,12 @@ function ImportForm({ repo, docsRoot, isFirstSite }: ImportRepoDialogProps) {
         </Field>
       </div>
 
-      <Field data-invalid={Boolean(errorFor(state, "reviewMode"))}>
-        <FieldLabel>How should updates work?</FieldLabel>
-        <RadioGroup
-          name="reviewMode"
-          value={reviewMode}
-          onValueChange={(value) => {
-            if (value === "AUTO_PUBLISH" || value === "REVIEW") setReviewMode(value)
-          }}
-          className="grid gap-2"
-        >
-          <label className="cursor-pointer rounded-control border border-border p-3 has-data-checked:border-foreground has-data-checked:bg-muted/40">
-            <span className="flex items-start gap-3">
-              <Radio value="AUTO_PUBLISH" className="mt-1" />
-              <span>
-                <span className="block text-sm font-medium">Auto-publish updates</span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  When you push to GitHub, {productName()} updates your live docs automatically. Best for most teams.
-                </span>
-              </span>
-            </span>
-          </label>
-          <label className="cursor-pointer rounded-control border border-border p-3 has-data-checked:border-foreground has-data-checked:bg-muted/40">
-            <span className="flex items-start gap-3">
-              <Radio value="REVIEW" className="mt-1" />
-              <span>
-                <span className="block text-sm font-medium">Review changes first</span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {productName()} prepares the changes, but your live docs stay unchanged until you approve them. Best for public or sensitive docs.
-                </span>
-              </span>
-            </span>
-          </label>
-        </RadioGroup>
-        {isFirstSite ? (
-          <FieldDescription>
-            This is your first site. You can change this later in site settings.
-          </FieldDescription>
-        ) : (
-          <FieldDescription>You can change this later in site settings.</FieldDescription>
-        )}
-        <FieldError>{errorFor(state, "reviewMode")}</FieldError>
-      </Field>
+      <input type="hidden" name="reviewMode" value="REVIEW" />
+      <div className="flex items-center justify-between text-sm">
+        <span>Publishing</span>
+        <span>Draft</span>
+      </div>
+      <FieldError>{errorFor(state, "reviewMode")}</FieldError>
 
       {formError ? <FieldError>{formError}</FieldError> : null}
 
@@ -215,7 +176,7 @@ function ImportForm({ repo, docsRoot, isFirstSite }: ImportRepoDialogProps) {
   );
 }
 
-export function ImportRepoDialog({ repo, docsRoot, isFirstSite }: ImportRepoDialogProps) {
+export function ImportRepoDialog({ repo, docsRoot }: ImportRepoDialogProps) {
   return (
     <Dialog>
       <DialogTrigger render={<Button size="sm" />}>Import</DialogTrigger>
@@ -226,7 +187,7 @@ export function ImportRepoDialog({ repo, docsRoot, isFirstSite }: ImportRepoDial
             Name the site and choose how it looks. The first build starts when you click Build site.
           </DialogDescription>
         </DialogHeader>
-        <ImportForm repo={repo} docsRoot={docsRoot} isFirstSite={isFirstSite} />
+        <ImportForm repo={repo} docsRoot={docsRoot} />
       </DialogContent>
     </Dialog>
   );

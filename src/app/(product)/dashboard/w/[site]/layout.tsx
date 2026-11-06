@@ -33,7 +33,6 @@ export default async function WorkspaceLayout({
         repo: site.repo,
         host: site.host,
         status: site.status,
-        reviewMode: site.reviewMode,
         hasRepo: site.hasRepo,
       }}
       sites={sites.map((item) => ({
