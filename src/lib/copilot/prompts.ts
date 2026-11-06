@@ -1,6 +1,8 @@
 import { productName } from "@/lib/brand";
+import { WRITER_COMPONENT_GUIDE } from "@/lib/copilot/components";
 import type { PageDraft } from "@/lib/copilot/contract";
 import { buildChangeDigest, buildRepoDigest, buildSummaryDigest } from "@/lib/copilot/digest";
+import { FIRST_BUILD_DIGEST_CHARS, PUSH_DIGEST_CHARS } from "@/lib/copilot/limits";
 import type { RepoChange, RepoSnapshot } from "@/lib/github/repo-content";
 
 function systemPrompt(): string {
@@ -23,7 +25,7 @@ export function firstBuildRequest(args: {
   repoSummary?: string | null;
   snapshot: RepoSnapshot;
 }): { system: string; user: string; maxTokens: number } {
-  const digest = buildRepoDigest(args.snapshot, 60_000);
+  const digest = buildRepoDigest(args.snapshot, FIRST_BUILD_DIGEST_CHARS);
   return {
     system: systemPrompt(),
     user: [
@@ -48,7 +50,7 @@ export function pushUpdateRequest(args: {
   change: RepoChange;
   existingPages: PageDraft[];
 }): { system: string; user: string; maxTokens: number } {
-  const digest = buildChangeDigest(args.change, 12_000);
+  const digest = buildChangeDigest(args.change, PUSH_DIGEST_CHARS);
   const existing = args.existingPages
     .map(
       (page) =>
@@ -181,9 +183,12 @@ export function planRequest(args: {
       "DOCS_STAGE:plan",
       "You suggest documentation pages that are still missing.",
       STAGE_RULES,
-      'JSON shape: {"pages":[{"slug":"search","section":"Guides","title":"Search","description":"How do I search?","navOrder":25,"kind":"guide","sourcePaths":["src/app/search/page.tsx"]}]}',
-      "Suggest at most 4 pages. Each page answers one question a person would ask. sourcePaths must be real paths from the facts.",
-      "Do not suggest a page that repeats a required slug. Do not suggest an API reference for a product a person uses on screen.",
+      'JSON shape: {"pages":[{"slug":"search","section":"How-to","title":"Search","description":"How do I search?","navOrder":25,"kind":"guide","layout":"how-to","sourcePaths":["src/app/search/page.tsx"]}]}',
+      "Suggest pages that are still missing from a product outline. Sections are only Get Started, Concepts, How-to, and Reference.",
+      "Each page answers one question a person would ask. sourcePaths must be real paths from the facts.",
+      "Do not suggest a page per screen, button, or file. Do not suggest a page that repeats a required slug.",
+      "Do not suggest an API reference for a product a person uses on screen.",
+      "layout is one of overview, get-started, concept, how-to, reference, troubleshooting.",
     ].join(" "),
     user: [
       `Plan any missing docs for "${args.siteName}".`,
@@ -207,10 +212,12 @@ export function pageWriteRequest(args: {
     description: string;
     section: string;
     kind: string;
+    layout: string;
     audience: string;
     reader: string;
     question: string;
   };
+  nav: string;
   factsDigest: string;
   routeList: string;
   sources: string;
@@ -221,13 +228,15 @@ export function pageWriteRequest(args: {
       "DOCS_STAGE:write",
       "You write one documentation page in Markdown.",
       STAGE_RULES,
-      'JSON shape: {"title":"Getting started","description":"Install and run the app","content":"Markdown body"}',
+      'JSON shape: {"title":"Getting started","description":"Install and run the app","layout":"get-started","content":"Markdown body"}',
       "Do not start content with an H1. Use H2 and H3.",
-      "Use a numbered list for setup steps. Use GitHub alerts for warnings: a blockquote starting with [!NOTE], [!WARNING], or [!TIP].",
+      "Use the layout you were given. Do not switch layouts.",
+      WRITER_COMPONENT_GUIDE,
       "Show commands and request shapes in fenced code blocks with a language tag.",
       "Write for the reader. A user has the product open: explain the job in the product's words and do not tell them to clone the repository.",
       "An integrator installs or calls the product: include only the install step, settings, commands, and endpoints that are in the facts.",
       "For an API page, document every route in the route list with its method and path. Do not add routes that are not in the list.",
+      "The other pages in the outline are listed below. Link to them when a reader should go there next. Do not repeat them.",
     ].join(" "),
     user: [
       `Write the "${args.page.title}" page for "${args.siteName}".`,
@@ -235,9 +244,13 @@ export function pageWriteRequest(args: {
       `Slug: ${args.page.slug || "(home)"}`,
       `Section: ${args.page.section}`,
       `Kind: ${args.page.kind}`,
+      `Layout: ${args.page.layout}`,
       `Reader: ${args.page.reader}`,
       `Question this page answers: ${args.page.question}`,
       `Description hint: ${args.page.description}`,
+      "",
+      "Outline:",
+      args.nav || "(this is the only page)",
       "",
       "Hard facts:",
       args.factsDigest,
@@ -268,6 +281,7 @@ export function pageCritiqueRequest(args: {
       STAGE_RULES,
       'JSON shape: {"pass":false,"reasons":["The steps cannot be performed in the product."]}',
       "Fail the page when it answers no question, names a control or endpoint that is not in the evidence, or tells a product user to clone the source.",
+      "Also fail stubs, file dumps, duplicate pages, and a home page that is only marketing.",
       "Pass the page when a person with the product open could follow it.",
     ].join(" "),
     user: [
@@ -324,7 +338,7 @@ export function chatPlanRequest(args: {
       "You choose which documentation pages an instruction should change.",
       STAGE_RULES,
       'JSON shape: {"slugs":["getting-started",""],"note":"Short reason"}',
-      "Include every page the instruction affects, not only the page the user had open. Use an empty string for the home page. Return at most 6 slugs.",
+      "Include every page the instruction affects, not only the page the user had open. Use an empty string for the home page. Return at most 20 slugs.",
     ].join(" "),
     user: [
       `Site: ${args.siteName}`,

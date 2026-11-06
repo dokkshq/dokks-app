@@ -1,6 +1,9 @@
+import { batchPaths, chooseProductArea, coverageNote, detectProductAreas, inProductArea, mergeFacts } from "@/lib/copilot/batches";
 import { PIPELINE_COST_CEILING_USD } from "@/lib/copilot/cost";
 import { parseModelJson, type PageDraft } from "@/lib/copilot/contract";
-import { factsDigest, type RepoFacts } from "@/lib/copilot/facts";
+import { extractFacts, factsDigest, type RepoFacts } from "@/lib/copilot/facts";
+import { MAX_PLANNED_PAGES, MAX_SNAPSHOT_FILES, MAX_TREE_PATHS, WRITER_FILE_CHARS, WRITER_SOURCE_CHARS, WRITE_CONCURRENCY } from "@/lib/copilot/limits";
+import { pageQualityIssues } from "@/lib/copilot/review";
 import {
   factualPageContent,
   mergePagePlan,
@@ -25,9 +28,9 @@ import type { CompletionResult, CopilotProvider } from "@/lib/copilot/providers"
 import { repairSiteLinks, verifyPage, type Violation } from "@/lib/copilot/verify";
 import type { RepoFile, RepoSnapshot } from "@/lib/github/repo-content";
 
-const PAGE_CONCURRENCY = 4;
+const PAGE_CONCURRENCY = WRITE_CONCURRENCY;
 const COST_CEILING_USD = PIPELINE_COST_CEILING_USD;
-const SOURCE_BUDGET = 14_000;
+const SOURCE_BUDGET = WRITER_SOURCE_CHARS;
 
 export type StageUsage = {
   stage: string;
@@ -50,6 +53,9 @@ export type PageVerification = {
   violations: Violation[];
   rewritten: boolean;
   stubbed: boolean;
+  unwritten?: boolean;
+  dropped?: boolean;
+  reasons?: string[];
 };
 
 export type PipelineResult = {
@@ -58,6 +64,9 @@ export type PipelineResult = {
   changeNote: string | null;
   usage: PipelineUsage;
   verification: PageVerification[];
+  awaitingApproval: boolean;
+  plan: PlannedPage[];
+  coverageNote: string | null;
 };
 
 export async function runFirstBuildPipeline(args: {
@@ -67,25 +76,47 @@ export async function runFirstBuildPipeline(args: {
   repoFullName: string | null;
   snapshot: RepoSnapshot;
   facts: RepoFacts;
+  approvedPlan?: PlannedPage[] | null;
+  productRoot?: string | null;
+  alreadySpentUsd?: number;
 }): Promise<PipelineResult> {
   const usage = blankUsage();
+  if (args.alreadySpentUsd && args.alreadySpentUsd > 0) usage.estimatedCostUsd = args.alreadySpentUsd;
   const verification: PageVerification[] = [];
-  const surface = extractProductSurface(args.snapshot, args.facts);
-  const model = await refineProductModel(args.heavy, args.siteName, args.facts, args.snapshot, surface, usage);
-  const facts = args.facts;
-  const base = planPagesFromFacts({
+  const understood = understandSnapshot(args.snapshot, args.siteName, args.productRoot);
+  const facts = mergeFacts([understood.facts, args.facts]);
+  const surface = extractProductSurface(
+    { files: understood.files, treePaths: understood.paths },
     facts,
-    treePaths: args.snapshot.treePaths,
-    files: args.snapshot.files,
-    model,
-  });
-  const suggested = await suggestPages(args.heavy, args.siteName, facts, base, model, usage);
-  const plan = mergePagePlan({
-    base,
-    suggested,
-    treePaths: args.snapshot.treePaths,
-    facts,
-  });
+  );
+  if (!args.approvedPlan) {
+    const model = await refineProductModel(args.heavy, args.siteName, facts, args.snapshot, surface, usage);
+    const base = planPagesFromFacts({
+      facts,
+      treePaths: understood.paths,
+      files: understood.files,
+      model,
+    });
+    const suggested = await suggestPages(args.heavy, args.siteName, facts, base, model, usage);
+    const plan = mergePagePlan({
+      base,
+      suggested,
+      treePaths: understood.paths,
+      facts,
+    });
+    return {
+      pages: [],
+      removedSlugs: [],
+      changeNote: understood.coverage,
+      usage,
+      verification,
+      awaitingApproval: true,
+      plan,
+      coverageNote: understood.coverage,
+    };
+  }
+  const model = buildProductModel(surface, facts);
+  const plan = args.approvedPlan.slice(0, MAX_PLANNED_PAGES);
   const drafts = await writePlan({
     plan,
     heavy: args.heavy,
@@ -93,19 +124,55 @@ export async function runFirstBuildPipeline(args: {
     siteName: args.siteName,
     repoFullName: args.repoFullName,
     facts,
-    files: args.snapshot.files,
-    treePaths: args.snapshot.treePaths,
+    files: understood.files,
+    treePaths: understood.paths,
     usage,
     verification,
     model,
   });
-  const repaired = repairSiteLinks(drafts);
+  const repaired = repairSiteLinks(dropRejected(drafts, plan, facts, verification));
   return {
     pages: repaired.pages,
     removedSlugs: [],
     changeNote: model.promise.slice(0, 300) || null,
     usage,
     verification,
+    awaitingApproval: false,
+    plan,
+    coverageNote: understood.coverage,
+  };
+}
+
+function understandSnapshot(snapshot: RepoSnapshot, siteName: string, productRoot?: string | null) {
+  const ranked = snapshot.rankedPaths?.length ? snapshot.rankedPaths : snapshot.treePaths;
+  const choice = chooseProductArea(detectProductAreas(snapshot.treePaths), siteName, productRoot);
+  const excluded = choice.area.root === "" ? choice.others.map((area) => area.root).filter(Boolean) : [];
+  const paths = ranked.filter((path) => inProductArea(path, choice.area.root, excluded));
+  const files = snapshot.files.filter((file) => inProductArea(file.path, choice.area.root, excluded));
+  const batches = batchPaths(paths, MAX_SNAPSHOT_FILES);
+  const covered = batches.slice(0, Math.ceil(10_000 / MAX_SNAPSHOT_FILES));
+  const facts = mergeFacts(
+    covered.map((batch) =>
+      extractFacts({
+        treePaths: batch.slice(0, MAX_TREE_PATHS),
+        files: files.filter((file) => batch.includes(file.path)),
+      }),
+    ),
+  );
+  const read = files.filter((file) => paths.includes(file.path)).length;
+  return {
+    facts: covered.length > 0 ? facts : extractFacts({ treePaths: snapshot.treePaths, files: snapshot.files }),
+    files,
+    paths: paths.length > 0 ? paths : snapshot.treePaths,
+    coverage: coverageNote({
+      area: choice.area,
+      others: choice.others,
+      ambiguous: choice.ambiguous,
+      batches: Math.max(covered.length, 1),
+      considered: paths.length,
+      read,
+      treeTruncated: snapshot.treeTruncated,
+    }),
   };
 }
 
@@ -156,6 +223,7 @@ export async function runPushPipeline(args: {
       description: page.description ?? "",
       navOrder: page.navOrder,
       kind: page.slug.startsWith("api-reference") ? "api" : "guide",
+      layout: page.slug === "" ? "overview" : page.slug.startsWith("api-reference") ? "reference" : page.slug === "getting-started" ? "get-started" : "how-to",
       audience: args.facts.audience,
       reader: "integrator",
       question: page.description ?? page.title,
@@ -164,9 +232,9 @@ export async function runPushPipeline(args: {
     });
   }
   if (planned.length === 0) {
-    return { pages: [], removedSlugs: [], changeNote: null, usage, verification };
+    return { pages: [], removedSlugs: [], changeNote: null, usage, verification, awaitingApproval: false, plan: [], coverageNote: null };
   }
-  const limited = planned.slice(0, 8);
+  const limited = planned.slice(0, MAX_PLANNED_PAGES);
   const drafts = await writePlan({
     plan: limited,
     heavy: args.heavy,
@@ -197,6 +265,9 @@ export async function runPushPipeline(args: {
     changeNote: `Updated ${drafts.length} page${drafts.length === 1 ? "" : "s"} from the push.`,
     usage,
     verification,
+    awaitingApproval: false,
+    plan: limited,
+    coverageNote: null,
   };
 }
 
@@ -211,26 +282,40 @@ export async function runChatPipeline(args: {
   pages: PageDraft[];
   focusSlug: string | null;
   instruction: string;
+  approvedPlan?: PlannedPage[] | null;
 }): Promise<PipelineResult> {
   const usage = blankUsage();
   const verification: PageVerification[] = [];
   const facts = args.facts;
   const chosen = await chooseChatPages(args.small, args, usage);
-  const targets = args.pages.filter((page) => chosen.has(page.slug)).slice(0, 6);
+  const targets = args.pages.filter((page) => chosen.has(page.slug)).slice(0, MAX_PLANNED_PAGES);
   const selected = targets.length > 0 ? targets : args.pages.filter((page) => page.slug === (args.focusSlug ?? "")).slice(0, 1);
-  const plan: PlannedPage[] = selected.map((page) => ({
+  const plan: PlannedPage[] = (args.approvedPlan && args.approvedPlan.length > 0 ? args.approvedPlan : selected.map((page) => ({
     slug: page.slug,
-    section: page.section ?? "Guides",
+    section: normalizeChatSection(page.section),
     title: page.title,
     description: page.description ?? "",
     navOrder: page.navOrder,
-    kind: page.slug.startsWith("api-reference") ? "api" : page.slug === "" ? "home" : "guide",
-    audience: facts?.audience ?? "app",
-    reader: "integrator",
+    kind: page.slug.startsWith("api-reference") ? "api" as const : page.slug === "" ? "home" as const : "guide" as const,
+    layout: page.slug === "" ? "overview" as const : page.slug.startsWith("api-reference") ? "reference" as const : "how-to" as const,
+    audience: facts?.audience ?? "app" as const,
+    reader: "integrator" as const,
     question: page.description ?? page.title,
     sourcePaths: readSourcePaths(page.content),
     routes: facts && page.slug.startsWith("api-reference") ? facts.routes : [],
-  }));
+  }))).slice(0, MAX_PLANNED_PAGES);
+  if (!args.approvedPlan) {
+    return {
+      pages: [],
+      removedSlugs: [],
+      changeNote: "Waiting for approval before writing pages.",
+      usage,
+      verification,
+      awaitingApproval: plan.length > 0,
+      plan,
+      coverageNote: null,
+    };
+  }
   if (plan.length === 0) {
     return {
       pages: [],
@@ -238,6 +323,9 @@ export async function runChatPipeline(args: {
       changeNote: null,
       usage,
       verification,
+      awaitingApproval: false,
+      plan: [],
+      coverageNote: null,
     };
   }
   const factsForWrite = facts ?? {
@@ -277,7 +365,17 @@ export async function runChatPipeline(args: {
     changeNote: args.instruction.slice(0, 300),
     usage,
     verification,
+    awaitingApproval: false,
+    plan,
+    coverageNote: null,
   };
+}
+
+function normalizeChatSection(section: string | null): PlannedPage["section"] {
+  if (section === "Get Started" || section === "Concepts" || section === "How-to" || section === "Reference") return section;
+  if (section === "Concepts") return "Concepts";
+  if (section === "Reference") return "Reference";
+  return "How-to";
 }
 
 async function refineProductModel(
@@ -423,16 +521,37 @@ async function writePlan(args: {
   verifyFacts?: boolean;
 }): Promise<PageDraft[]> {
   const digest = factsDigest(args.facts, args.repoFullName);
-  const written = await pool(args.plan, PAGE_CONCURRENCY, async (page) => {
+  const nav = args.plan.map((item) => `- ${item.slug || "(home)"}: ${item.title} [${item.layout}]`).join("\n");
+  const started = new Set<number>();
+  let cursor = 0;
+  const results = new Array<PageDraft | null>(args.plan.length).fill(null);
+  async function worker() {
+    for (;;) {
+      if (args.usage.estimatedCostUsd >= COST_CEILING_USD) return;
+      const index = cursor;
+      cursor += 1;
+      if (index >= args.plan.length) return;
+      started.add(index);
+      results[index] = await writeOne(args.plan[index]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(PAGE_CONCURRENCY, args.plan.length) }, () => worker()));
+  for (let index = 0; index < args.plan.length; index += 1) {
+    if (started.has(index)) continue;
+    const page = args.plan[index];
+    args.verification.push({ slug: page.slug, violations: [], rewritten: false, stubbed: false, unwritten: true });
+  }
+  return results.filter((page): page is PageDraft => page !== null);
+
+  async function writeOne(page: PlannedPage): Promise<PageDraft | null> {
     if (args.usage.estimatedCostUsd >= COST_CEILING_USD) {
-      const stub = factualPageContent(page, args.facts, args.repoFullName);
-      args.verification.push({ slug: page.slug, violations: [], rewritten: false, stubbed: true });
-      return draftFrom(page, stub.title, stub.description, stub.content);
+      args.verification.push({ slug: page.slug, violations: [], rewritten: false, stubbed: false, unwritten: true });
+      return null;
     }
     const sources = sourceExcerpt(args.files, page.sourcePaths, SOURCE_BUDGET);
     const routeList = page.routes.map((route) => `${route.method} ${route.path} (${route.source})`).join("\n");
     let rewritten = false;
-    let stubbed = false;
+    const stubbed = false;
     let title = page.title;
     let description = page.description;
     let content = factualPageContent(page, args.facts, args.repoFullName).content;
@@ -447,10 +566,12 @@ async function writePlan(args: {
             description: page.description,
             section: page.section,
             kind: page.kind,
+            layout: page.layout,
             audience: page.audience,
             reader: page.reader,
             question: page.question,
           },
+          nav,
           factsDigest: args.instruction ? `${digest}\n\nEdit instruction:\n${args.instruction}` : digest,
           routeList,
           sources,
@@ -519,20 +640,66 @@ async function writePlan(args: {
       ];
     }
     const productReasons = args.model ? productCritique(content, page, args.model) : [];
-    if (violations.length > 0 || (productReasons.length > 0 && page.kind === "home")) {
-      const stub = factualPageContent(page, args.facts, args.repoFullName);
-      title = stub.title;
-      description = stub.description;
-      content = stub.content;
-      stubbed = true;
-      violations = verifyPage(content, args.facts, args.treePaths);
-    } else if (productReasons.length > 0) {
+    const quality = pageQualityIssues({
+      page,
+      content,
+      facts: args.facts,
+      siblings: args.plan,
+    });
+    if (violations.length > 0 || productReasons.length > 0 || quality.length > 0) {
+      args.verification.push({
+        slug: page.slug,
+        violations,
+        rewritten,
+        stubbed: false,
+        dropped: true,
+        reasons: [...reasons, ...productReasons, ...quality],
+      });
       return null;
     }
     args.verification.push({ slug: page.slug, violations, rewritten, stubbed });
-    return draftFrom(page, title, description, withSources(content, page.sourcePaths));
-  });
-  return written.filter((page): page is PageDraft => page !== null);
+    return draftFrom(page, title, description, withLayout(withSources(content, page.sourcePaths), page.layout));
+  }
+}
+
+function dropRejected(
+  drafts: PageDraft[],
+  plan: PlannedPage[],
+  facts: RepoFacts,
+  verification: PageVerification[],
+): PageDraft[] {
+  const kept: PageDraft[] = [];
+  for (const draft of drafts) {
+    const page = plan.find((item) => item.slug === draft.slug);
+    if (!page) {
+      kept.push(draft);
+      continue;
+    }
+    const reasons = pageQualityIssues({
+      page,
+      content: draft.content,
+      facts,
+      siblings: drafts,
+    });
+    if (reasons.length === 0) {
+      kept.push(draft);
+      continue;
+    }
+    const existing = verification.find((item) => item.slug === draft.slug);
+    if (existing) {
+      existing.dropped = true;
+      existing.stubbed = false;
+      existing.reasons = [...(existing.reasons ?? []), ...reasons];
+    } else {
+      verification.push({ slug: draft.slug, violations: [], rewritten: false, stubbed: false, dropped: true, reasons });
+    }
+  }
+  return kept;
+}
+
+function withLayout(content: string, layout: PlannedPage["layout"]): string {
+  const cleaned = content.replace(/^\s*<!--\s*layout:\s*[\w-]+\s*-->\s*/i, "").trim();
+  return `<!-- layout: ${layout} -->\n\n${cleaned}`;
 }
 
 function draftFrom(page: PlannedPage, title: string, description: string, content: string): PageDraft {
@@ -578,10 +745,10 @@ function sourceExcerpt(files: RepoFile[], paths: string[], maxChars: number): st
   const byPath = new Map(files.map((file) => [file.path, file]));
   const parts: string[] = [];
   let used = 0;
-  for (const path of paths) {
+  for (const path of paths.slice(0, 20)) {
     const file = byPath.get(path);
     if (!file) continue;
-    const slice = file.content.slice(0, 6_000);
+    const slice = file.content.slice(0, WRITER_FILE_CHARS);
     if (used + slice.length > maxChars) break;
     parts.push(`--- ${path}${file.truncated ? " (truncated)" : ""}\n${slice}`);
     used += slice.length;
@@ -598,20 +765,6 @@ function mergeDrafts(existing: PageDraft[], drafts: PageDraft[], removed: string
 
 function isContractMiss(error: unknown): boolean {
   return error instanceof SyntaxError;
-}
-
-async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const index = cursor;
-      cursor += 1;
-      results[index] = await fn(items[index] as T);
-    }
-  });
-  await Promise.all(workers);
-  return results;
 }
 
 function blankUsage(): PipelineUsage {

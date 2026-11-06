@@ -8,6 +8,7 @@ import { SelectField } from "@/components/ui/select";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { WorkspaceImportDialog } from "@/components/workspace/import-dialog";
 import { sendChatEditAction } from "@/app/(product)/dashboard/sites/[id]/actions";
+import { PlanApproval } from "@/components/workspace/plan-approval";
 import { discardDraftAction, publishDraftAction, retryBuildAction } from "@/app/(product)/dashboard/w/[site]/actions";
 import type { ImportView } from "@/lib/import/types";
 import type { WorkspaceJob, WorkspaceJobEvent } from "@/lib/workspace/jobs";
@@ -61,8 +62,10 @@ export function PreviewChat({
   const [liveRunning, setLiveRunning] = useState(running);
   const jobRunning =
     liveRunning || liveJobs.some((job) => job.status === "QUEUED" || job.status === "RUNNING");
+  const waitingPlan = liveJobs.find((job) => job.status === "WAITING" && job.plan);
   const shownJob = liveJobs.find((job) => job.status === "QUEUED" || job.status === "RUNNING")
     ?? liveJobs.find((job) => job.status === "FAILED")
+    ?? waitingPlan
     ?? activeJob;
   const showGenerating = hasRepo && pages.length === 0 && (jobRunning || shownJob?.status === "FAILED");
   const canChat = hasRepo;
@@ -205,6 +208,14 @@ export function PreviewChat({
               back={back}
             />
 
+            {waitingPlan?.plan ? (
+              <PlanApproval
+                siteId={siteId}
+                subdomain={subdomain}
+                jobId={waitingPlan.id}
+                plan={waitingPlan.plan}
+              />
+            ) : null}
             {pendingCount > 0 ? (
               <div className="mt-auto flex flex-col gap-3 rounded-control border border-border p-3">
                 <p className="text-sm">
@@ -228,7 +239,7 @@ export function PreviewChat({
               </div>
             ) : null}
           </div>
-          {canChat ? (
+          {canChat && !waitingPlan ? (
             <form action={sendChatEditAction} className="p-3">
               <input type="hidden" name="siteId" value={siteId} />
               <input type="hidden" name="returnTo" value={back} />

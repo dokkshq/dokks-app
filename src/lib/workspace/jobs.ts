@@ -11,6 +11,13 @@ export type WorkspaceJobEvent = {
   edited?: number;
 };
 
+export type DocsPlanView = {
+  coverage: string | null;
+  productRoot: string;
+  products: Array<{ id: string; name: string; root: string }>;
+  pages: Array<{ slug: string; title: string; section: string; description: string; layout: string }>;
+};
+
 export type WorkspaceJob = {
   id: string;
   kind: string;
@@ -22,6 +29,7 @@ export type WorkspaceJob = {
   createdAt: string;
   finishedAt: string | null;
   events: WorkspaceJobEvent[];
+  plan: DocsPlanView | null;
 };
 
 export function jobFailureReason(job: Pick<WorkspaceJob, "error" | "detail" | "events">): string {

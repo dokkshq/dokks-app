@@ -46,7 +46,7 @@ const snapshot: RepoSnapshot = {
 };
 
 describe("docs pipeline", () => {
-  it("stubs a page that still invents a route after rewrite, and drops a missing nav link", async () => {
+  it("waits for plan approval, then drops a page that still invents a route", async () => {
     const facts = extractFacts(snapshot);
     const model = provider((request) => {
       if (request.system.includes("DOCS_STAGE:model")) {
@@ -65,27 +65,27 @@ describe("docs pipeline", () => {
           content: "Call `POST /api/score` to rank providers.",
         });
       }
-      if (request.user.includes("API reference")) {
+      if (request.user.includes("Slug: api-reference")) {
         return JSON.stringify({
           title: "API reference",
           description: "Routes",
           content: "See [scores](/composite-score).\n\nCall `POST /api/score`.",
         });
       }
-      if (request.user.includes("Getting started") || request.user.includes("Slug: getting-started")) {
+      if (request.user.includes("Slug: getting-started")) {
         return JSON.stringify({
           title: "Getting started",
           description: "Run it",
-          content: "Run `npm run dev` after `npm install`. Set `process.env.DATABASE_URL`.",
+          content: "Run `npm install`, then `npm run dev`. Set `process.env.DATABASE_URL` before the server starts so the app can reach its database.",
         });
       }
       return JSON.stringify({
-        title: "Plugr",
+        title: "",
         description: "Student marketplace",
         content: "Read the [API reference](/api-reference) and the [missing guide](/not-a-page).",
       });
     });
-    const result = await runFirstBuildPipeline({
+    const planned = await runFirstBuildPipeline({
       heavy: model,
       small: model,
       siteName: "Plugr",
@@ -93,18 +93,61 @@ describe("docs pipeline", () => {
       snapshot,
       facts,
     });
-    const api = result.pages.find((page) => page.slug === "api-reference");
-    const home = result.pages.find((page) => page.slug === "");
-    expect(api?.content).toContain("| GET | `/api/providers` |");
-    expect(api?.content).not.toContain("/api/score");
-    expect(result.verification.find((item) => item.slug === "api-reference")?.stubbed).toBe(true);
-    expect(home?.content).toContain("](/api-reference)");
-    expect(home?.content).not.toContain("](/not-a-page)");
-    expect(result.pages.map((page) => page.slug)).toEqual(
+    expect(planned.awaitingApproval).toBe(true);
+    expect(planned.pages).toEqual([]);
+    expect(planned.plan.map((page) => page.slug)).toEqual(
       expect.arrayContaining(["", "getting-started", "configuration", "api-reference"]),
     );
-    expect(result.usage.stages.map((stage) => stage.stage)).toContain("model");
-    expect(result.usage.promptTokens).toBeGreaterThan(0);
+    const result = await runFirstBuildPipeline({
+      heavy: model,
+      small: model,
+      siteName: "Plugr",
+      repoFullName: "optimusexe/Plugr",
+      snapshot,
+      facts,
+      approvedPlan: planned.plan,
+    });
+    const api = result.pages.find((page) => page.slug === "api-reference");
+    const home = result.pages.find((page) => page.slug === "");
+    expect(api).toBeUndefined();
+    expect(result.verification.find((item) => item.slug === "api-reference")?.stubbed).toBe(false);
+    expect(result.verification.find((item) => item.slug === "api-reference")?.dropped).toBe(true);
+    expect(home?.content).not.toContain("](/not-a-page)");
+    expect(result.pages.map((page) => page.slug)).toEqual(expect.arrayContaining(["", "getting-started"]));
+    expect(result.awaitingApproval).toBe(false);
+    expect(planned.usage.stages.map((stage) => stage.stage)).toContain("model");
+  });
+
+  it("stops at the cost ceiling and leaves the remaining pages unwritten", async () => {
+    const facts = extractFacts(snapshot);
+    const model = provider(() => {
+      return JSON.stringify({
+        title: "Plugr",
+        description: "Student marketplace",
+        content: "Students find gigs by posting a short description and waiting for a match.",
+      });
+    });
+    const planned = await runFirstBuildPipeline({
+      heavy: model,
+      small: model,
+      siteName: "Plugr",
+      repoFullName: "optimusexe/Plugr",
+      snapshot,
+      facts,
+    });
+    const blocked = await runFirstBuildPipeline({
+      heavy: model,
+      small: model,
+      siteName: "Plugr",
+      repoFullName: "optimusexe/Plugr",
+      snapshot,
+      facts,
+      approvedPlan: planned.plan,
+      alreadySpentUsd: 6,
+    });
+    expect(blocked.pages).toEqual([]);
+    expect(blocked.verification.length).toBeGreaterThan(0);
+    expect(blocked.verification.every((item) => item.stubbed === false && item.unwritten === true)).toBe(true);
   });
 
   it("plans a chat edit across more than one page", async () => {
@@ -116,9 +159,40 @@ describe("docs pipeline", () => {
       return JSON.stringify({
         title: request.user.includes("Getting started") ? "Getting started" : "Plugr",
         description: "Updated",
-        content: "Run `npm run dev`. The route is `GET /api/providers`.",
+        content: "Run `npm install`, then `npm run dev`. The health route is `GET /api/providers`. Use the database URL from the environment example.",
       });
     });
+    const gated = await runChatPipeline({
+      heavy: model,
+      small: model,
+      siteName: "Plugr",
+      repoFullName: "optimusexe/Plugr",
+      facts,
+      files: snapshot.files,
+      treePaths: snapshot.treePaths,
+      focusSlug: "",
+      instruction: "Mention the dev script on the home page and the getting started page.",
+      pages: [
+        {
+          slug: "",
+          section: "Get Started",
+          title: "Plugr",
+          description: null,
+          navOrder: 0,
+          content: "Welcome\n\n<!-- sources: README.md -->",
+        },
+        {
+          slug: "getting-started",
+          section: "Get Started",
+          title: "Getting started",
+          description: null,
+          navOrder: 10,
+          content: "Install\n\n<!-- sources: package.json -->",
+        },
+      ],
+    });
+    expect(gated.pages).toEqual([]);
+    expect(gated.awaitingApproval).toBe(true);
     const result = await runChatPipeline({
       heavy: model,
       small: model,
@@ -129,6 +203,7 @@ describe("docs pipeline", () => {
       treePaths: snapshot.treePaths,
       focusSlug: "",
       instruction: "Mention the dev script on the home page and the getting started page.",
+      approvedPlan: gated.plan,
       pages: [
         {
           slug: "",

@@ -324,7 +324,8 @@ export function shouldPublishImmediately(args: {
   reviewMode: ReviewMode;
   source: RevisionSource;
 }): boolean {
-  return args.reviewMode === "AUTO_PUBLISH" && args.source !== "CHAT_EDIT";
+  // Generated docs stay an editable draft. Publishing is a separate owner action.
+  return false;
 }
 
 function revisionData(

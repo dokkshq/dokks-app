@@ -1,3 +1,4 @@
+import { MAX_FILE_CHARS } from "@/lib/copilot/limits";
 import type { RepoFile, RepoSnapshot } from "@/lib/github/repo-content";
 import { isRouteFile } from "@/lib/github/repo-content";
 
@@ -69,7 +70,7 @@ export function extractFacts(snapshot: Pick<RepoSnapshot, "files" | "treePaths">
     schemaModels,
     entryPoints,
     readmePath: readme?.path ?? null,
-    readmeExcerpt: readme ? readme.content.slice(0, 2_500) : "",
+    readmeExcerpt: readme ? readme.content.slice(0, MAX_FILE_CHARS) : "",
   };
   facts.audience = inferAudience(facts, snapshot.treePaths);
   return facts;

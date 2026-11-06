@@ -40,7 +40,7 @@ export type PlanCard = {
 };
 
 const FALLBACK_PLANS: PlanCard[] = [
-  { tier: "FREE", name: "Free", priceCents: 0, customDomain: false, dailyRepoCapUsd: 2 },
+  { tier: "FREE", name: "Free", priceCents: 0, customDomain: false, dailyRepoCapUsd: 6 },
   { tier: "PRO", name: "Pro", priceCents: 2000, customDomain: true, dailyRepoCapUsd: 10 },
   { tier: "TEAM", name: "Team", priceCents: 20000, customDomain: true, dailyRepoCapUsd: 40 },
 ];

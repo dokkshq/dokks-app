@@ -58,7 +58,33 @@ describe("runAgentLoop", () => {
     expect(result.pages[0]?.content).toBe("Welcome");
   });
 
-  it("collects a written page once", async () => {
+  it("does not write a home page before a plan is approved", async () => {
+    const result = await runAgentLoop({
+      model: provider([
+        JSON.stringify({
+          thought: "The home page should be shorter.",
+          say: "I'll rewrite the home page.",
+          tool: "write_page",
+          input: { slug: "", title: "Plugr", section: "Introduction", content: "Students find gigs." },
+        }),
+        JSON.stringify({
+          thought: "Done.",
+          say: "Stopped.",
+          tool: "finish",
+          input: { reply: "I could not publish the home page." },
+        }),
+      ]),
+      goal: "Make the home page shorter",
+      siteName: "Plugr",
+      files,
+      treePaths: files.map((file) => file.path),
+      pages: [{ slug: "", section: "Introduction", title: "Plugr", description: null, navOrder: 0, content: "A very long welcome" }],
+      maxSteps: 8,
+    });
+    expect(result.pages.find((page) => page.slug === "")?.content).toBe("A very long welcome");
+  });
+
+  it("writes a page after the plan is approved", async () => {
     const events: string[] = [];
     const result = await runAgentLoop({
       model: provider([
@@ -81,6 +107,7 @@ describe("runAgentLoop", () => {
       treePaths: files.map((file) => file.path),
       pages: [{ slug: "", section: "Introduction", title: "Plugr", description: null, navOrder: 0, content: "A very long welcome" }],
       maxSteps: 8,
+      planApproved: true,
       onEvent: (event) => {
         events.push(event.message);
       },

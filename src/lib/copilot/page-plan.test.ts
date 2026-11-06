@@ -54,7 +54,8 @@ describe("page plan", () => {
     expect(slugs).toContain("configuration");
     expect(slugs).toContain("api-reference");
     expect(plan.find((page) => page.slug === "api-reference")?.section).toBe("Reference");
-    expect(plan.find((page) => page.slug === "getting-started")?.section).toBe("Guides");
+    expect(plan.find((page) => page.slug === "getting-started")?.section).toBe("Get Started");
+    expect(plan.find((page) => page.slug === "getting-started")?.layout).toBe("get-started");
     const api = plan.filter((page) => page.kind === "api");
     const documented = api.flatMap((page) => page.routes.map((route) => route.path));
     expect(documented).toEqual(expect.arrayContaining(facts.routes.map((route) => route.path)));
@@ -134,10 +135,12 @@ describe("page plan", () => {
     const plan = planPagesFromFacts({ facts, treePaths, files, model });
     expect(surface.kind).toBe("hosted-app");
     expect(model.reader).toBe("user");
-    expect(plan.map((page) => page.slug)).toContain("find-a-gig");
+    expect(plan.map((page) => page.slug)).toEqual(["", "getting-started"]);
+    expect(plan.some((page) => page.slug === "find-a-gig")).toBe(false);
     expect(plan.some((page) => page.slug.startsWith("api-reference"))).toBe(false);
-    const guide = plan.find((page) => page.slug === "find-a-gig");
+    const guide = plan.find((page) => page.slug === "getting-started");
     expect(guide?.reader).toBe("user");
+    expect(guide?.layout).toBe("get-started");
     expect(factualPageContent(guide!, facts, "ada/plugr").content).not.toContain("git clone");
     expect(productCritique("Clone it.\n\n```bash\ngit clone https://github.com/ada/plugr.git\n```", guide!, model)).toContain(
       "Tells a product user to clone the repository.",

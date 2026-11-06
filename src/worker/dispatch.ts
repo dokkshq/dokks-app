@@ -16,8 +16,11 @@ import {
   reserveTokensForKind,
 } from "@/lib/copilot/cost";
 import { runAgentLoop, type AgentEvent } from "@/lib/copilot/agent-loop";
+import { chooseProductArea, detectProductAreas } from "@/lib/copilot/batches";
+import { classifyChatTurn } from "@/lib/copilot/chat-intent";
 import { extractFacts } from "@/lib/copilot/facts";
 import { generateRepoSummary } from "@/lib/copilot/generate";
+import { readStoredPlan } from "@/lib/copilot/plan-gate";
 import { runChatPipeline, runFirstBuildPipeline, runPushPipeline } from "@/lib/copilot/pipeline";
 import { taskSizeForJob } from "@/lib/copilot/models";
 import {
@@ -32,6 +35,7 @@ import { getPrisma } from "@/lib/db";
 import { GithubRateLimitError } from "@/lib/github/api-error";
 import { createInstallationToken } from "@/lib/github/installation-token";
 import {
+  listRepoPaths,
   readRepoChange,
   readRepoSnapshot,
 } from "@/lib/github/repo-content";
@@ -244,57 +248,91 @@ async function runFirstBuild(args: {
   reviewMode: "AUTO_PUBLISH" | "REVIEW";
   usageId?: string;
 }) {
+  const stored = readStoredPlan(args.job.payload);
   await progress(args.job.id, args.config, {
     phase: JobPhase.READING_REPO,
     progress: 10,
     message: "Reading the product",
-    detail: "Looking at screens, actions, and anything a person can call.",
+    detail: "Reading the README, then the product source.",
   });
-  const snapshot = await repoCall(() =>
-    readRepoSnapshot({
+  const index = await repoCall(() =>
+    listRepoPaths({
       owner: args.owner,
       name: args.name,
       branch: args.branch,
       token: args.token,
     }),
   );
+  const choice = chooseProductArea(detectProductAreas(index.paths), args.siteName, stored?.productRoot);
+  const snapshot = await repoCall(() =>
+    readRepoSnapshot({
+      owner: args.owner,
+      name: args.name,
+      branch: args.branch,
+      token: args.token,
+      ref: index.sha,
+      productRoot: choice.area.root,
+      excludeRoots: choice.area.root === "" ? choice.others.map((area) => area.root).filter(Boolean) : [],
+      readAllBatches: true,
+    }),
+  );
   const facts = extractFacts(snapshot);
   await assertOwnership(args.job.id, args.config.workerId);
-  const existingPages = await loadSiteDrafts(args.siteId);
-  const prior = await priorWork(args.job.id);
-  const agent = await runAgentLoop({
-    model: resolveProvider("heavy", process.env),
-    goal: withPriorWork(
-      "Write the documentation for this product. Read the repository until you know what a person can do. Write an overview, a guide for each real job, and a reference only for things a person looks up. Then finish with a short summary of what you published.",
-      prior,
-    ),
-    siteName: args.siteName,
-    files: snapshot.files,
-    treePaths: snapshot.treePaths,
-    pages: existingPages,
-    maxSteps: 24,
-    onEvent: (event) => logAgentEvent(args.job.id, event),
-  }).catch(() => null);
-  if (agent?.pages.some((page) => page.slug === "")) {
-    await finalize(args.usageId, agent);
+  if (stored?.approved && !stored.replan) {
+    await progress(args.job.id, args.config, {
+      phase: JobPhase.GENERATING,
+      progress: 55,
+      message: "Writing the docs",
+      detail: "Writing the approved outline.",
+    });
+    const generated = await runFirstBuildPipeline({
+      heavy: resolveProvider("heavy", process.env),
+      small: resolveProvider("small", process.env),
+      siteName: args.siteName,
+      repoFullName: `${args.owner}/${args.name}`,
+      snapshot,
+      facts,
+      approvedPlan: stored.pages,
+      productRoot: stored.productRoot,
+    });
+    await finalize(args.usageId, generated.usage);
+    if (generated.pages.length === 0) {
+      const usage = await jobUsageTotals(args.job.id);
+      await logJobEvent({
+        jobId: args.job.id,
+        message: "No pages were written. The run stopped or review rejected the drafts.",
+        phase: JobPhase.COMPLETE,
+        progress: 100,
+        detail: "Nothing to publish",
+        metadata: { role: "reply" },
+      });
+      await finishJob({
+        jobId: args.job.id,
+        workerId: args.config.workerId,
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        estimatedCostUsd: usage.estimatedCostUsd,
+        successMessage: "No pages were written.",
+      });
+      return;
+    }
     await publish(
-      args,
+      { ...args, reviewMode: "REVIEW" },
       {
-        pages: agent.pages.map(draftFromGeneration),
-        removedSlugs: [],
-        changeNote: agent.reply,
+        pages: generated.pages.map(draftFromGeneration),
+        removedSlugs: generated.removedSlugs,
+        changeNote: generated.changeNote ?? args.siteDescription,
         source: "FIRST_BUILD",
         baseSha: snapshot.sha,
       },
-      agent.reply,
     );
     return;
   }
   await progress(args.job.id, args.config, {
     phase: JobPhase.GENERATING,
     progress: 35,
-    message: "Writing the docs",
-    detail: generatedWaitDetail(facts),
+    message: "Planning the outline",
+    detail: "No pages are written until you approve the outline.",
   });
   const generated = await runFirstBuildPipeline({
     heavy: resolveProvider("heavy", process.env),
@@ -303,17 +341,17 @@ async function runFirstBuild(args: {
     repoFullName: `${args.owner}/${args.name}`,
     snapshot,
     facts,
+    productRoot: choice.area.root,
   });
-  await finalize(args.usageId, generated.usage);
-  if (!generated.pages.some((page) => page.slug === "")) {
-    throw new PermanentJobError("The model did not return a home page.");
-  }
-  await publish(args, {
-    pages: generated.pages.map(draftFromGeneration),
-    removedSlugs: generated.removedSlugs,
-    changeNote: generated.changeNote ?? args.siteDescription,
-    source: "FIRST_BUILD",
-    baseSha: snapshot.sha,
+  await parkForPlan({
+    job: args.job,
+    config: args.config,
+    usageId: args.usageId,
+    usage: generated.usage,
+    plan: generated.plan,
+    coverage: generated.coverageNote,
+    productRoot: choice.area.root,
+    products: [choice.area, ...choice.others],
   });
 }
 
@@ -442,13 +480,16 @@ async function runPushUpdate(args: {
     });
     return;
   }
-  await publish(args, {
-    pages: generated.pages.map(draftFromGeneration),
-    removedSlugs: generated.removedSlugs,
-    changeNote: generated.changeNote ?? args.repoSummary,
-    source: "PUSH_UPDATE",
-    baseSha: after,
-  });
+  await publish(
+    { ...args, reviewMode: "REVIEW" },
+    {
+      pages: generated.pages.map(draftFromGeneration),
+      removedSlugs: generated.removedSlugs,
+      changeNote: generated.changeNote ?? args.repoSummary,
+      source: "PUSH_UPDATE",
+      baseSha: after,
+    },
+  );
 }
 
 async function runChatEdit(args: {
@@ -513,20 +554,50 @@ async function runChatEdit(args: {
     navOrder: page.navOrder,
     content: page.content,
   }));
-  const agent = await runAgentLoop({
-    model: resolveProvider("heavy", process.env),
-    goal: withPriorWork(args.instruction, await priorWork(args.job.id)),
-    siteName: args.siteName,
-    files,
-    treePaths,
-    pages: drafts,
-    maxSteps: 16,
-    onEvent: (event) => logAgentEvent(args.job.id, event),
-  }).catch(() => null);
-  const changed = agent
-    ? agent.pages.some((page) => drafts.find((item) => item.slug === page.slug)?.content !== page.content || !drafts.some((item) => item.slug === page.slug))
-    : false;
-  if (agent?.finished && !changed) {
+  const intent = classifyChatTurn(args.instruction);
+  const storedPlan = readStoredPlan(args.job.payload);
+  if (intent !== "question") {
+    if (!storedPlan?.approved) {
+      const planned = await runChatPipeline({
+        heavy: resolveProvider("heavy", process.env),
+        small: resolveProvider("small", process.env),
+        siteName: args.siteName,
+        repoFullName: repo ? repo.fullName : null,
+        facts,
+        files,
+        treePaths,
+        focusSlug: focus?.slug ?? null,
+        instruction: args.instruction,
+        pages: drafts,
+      });
+      await parkForPlan({
+        job: args.job,
+        config: args.config,
+        usageId: args.usageId,
+        usage: planned.usage,
+        plan: planned.plan,
+        coverage: "Approve the pages to change before anything is written.",
+        productRoot: "",
+        products: [],
+      });
+      return;
+    }
+  }
+  const agent = intent === "question"
+    ? await runAgentLoop({
+        model: resolveProvider("heavy", process.env),
+        goal: withPriorWork(args.instruction, await priorWork(args.job.id)),
+        siteName: args.siteName,
+        files,
+        treePaths,
+        pages: drafts,
+        maxSteps: 16,
+        planApproved: false,
+        onEvent: (event) => logAgentEvent(args.job.id, event),
+      }).catch(() => null)
+    : null;
+  const changed = false;
+  if (intent === "question" && agent?.finished && !changed) {
     await finalize(args.usageId, agent);
     const usage = await jobUsageTotals(args.job.id);
     await logJobEvent({
@@ -567,6 +638,7 @@ async function runChatEdit(args: {
     treePaths,
     focusSlug: focus?.slug ?? null,
     instruction: args.instruction,
+    approvedPlan: storedPlan?.approved ? storedPlan.pages : null,
     pages: pages.map((page) => ({
       slug: page.slug,
       section: page.section,
@@ -693,6 +765,60 @@ async function refreshSummary(args: {
     completionTokens: usage.completionTokens,
     estimatedCostUsd: usage.estimatedCostUsd,
     successMessage: "Summary refreshed",
+  });
+}
+
+async function parkForPlan(args: {
+  job: Job;
+  config: WorkerConfig;
+  usageId?: string;
+  usage: { promptTokens: number; completionTokens: number; estimatedCostUsd: number };
+  plan: import("@/lib/copilot/page-plan").PlannedPage[];
+  coverage: string | null;
+  productRoot: string;
+  products: import("@/lib/copilot/batches").ProductArea[];
+}) {
+  await finalize(args.usageId, args.usage);
+  const prisma = getPrisma();
+  if (!prisma) throw new Error("DATABASE_URL is required to run the worker.");
+  const current = await prisma.job.findUnique({
+    where: { id: args.job.id },
+    select: { payload: true },
+  });
+  const previous =
+    current?.payload && typeof current.payload === "object" && !Array.isArray(current.payload)
+      ? current.payload
+      : {};
+  await prisma.job.updateMany({
+    where: { id: args.job.id, status: "RUNNING", lockedBy: args.config.workerId },
+    data: {
+      status: "WAITING",
+      phase: "AWAITING_APPROVAL",
+      progress: 45,
+      detail: "Waiting for you to approve the outline",
+      payload: {
+        ...previous,
+        docsPlan: {
+          approved: false,
+          replan: false,
+          productRoot: args.productRoot,
+          products: args.products,
+          coverage: args.coverage ?? "",
+          pages: args.plan,
+        },
+      },
+      lockedBy: null,
+      leaseUntil: null,
+      maxAttempts: 8,
+    },
+  });
+  await logJobEvent({
+    jobId: args.job.id,
+    message: args.coverage || "Outline is ready. Add, drop, rename, or merge pages, then approve it.",
+    phase: JobPhase.AWAITING_APPROVAL,
+    progress: 45,
+    detail: "Waiting for plan approval",
+    metadata: { role: "say" },
   });
 }
 
@@ -835,24 +961,6 @@ function withPriorWork(goal: string, prior: string): string {
   return `${goal}\n\nYou already did this work. Continue from here. Do not repeat finished steps.\n${prior}`;
 }
 
-async function loadSiteDrafts(siteId: string) {
-  const prisma = getPrisma();
-  if (!prisma) return [];
-  const pages = await prisma.page.findMany({
-    where: { siteId },
-    orderBy: { navOrder: "asc" },
-    select: {
-      slug: true,
-      section: true,
-      title: true,
-      description: true,
-      navOrder: true,
-      content: true,
-    },
-  });
-  return pages;
-}
-
 async function logAgentEvent(jobId: string, event: AgentEvent): Promise<void> {
   await logJobEvent({
     jobId,
@@ -881,13 +989,6 @@ async function progress(
     metadata: { role: "thought", body: input.detail },
   });
   await assertOwnership(jobId, config.workerId);
-}
-
-function generatedWaitDetail(facts: { routes: unknown[]; envVars: unknown[] }): string {
-  const parts = [];
-  if (facts.routes.length > 0) parts.push(`${facts.routes.length} endpoints`);
-  if (facts.envVars.length > 0) parts.push(`${facts.envVars.length} settings`);
-  return parts.length > 0 ? `Using ${parts.join(" and ")} from the repository.` : "Planning the pages from the product.";
 }
 
 async function installationToken(installationId: string): Promise<string> {

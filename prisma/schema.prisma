@@ -50,6 +50,7 @@ enum JobStatus {
   SUCCEEDED
   FAILED
   CANCELLED
+  WAITING
 }
 
 enum JobPhase {
@@ -59,6 +60,7 @@ enum JobPhase {
   VALIDATING
   PUBLISHING
   COMPLETE
+  AWAITING_APPROVAL
 }
 
 enum ReviewMode {

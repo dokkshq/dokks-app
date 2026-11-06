@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getViewSession } from "@/lib/admin/act-as";
 import { blockActAsWrites } from "@/lib/admin/guard";
+import { acceptOwnerPlan, readStoredPlan } from "@/lib/copilot/plan-gate";
 import { getPrisma } from "@/lib/db";
 import { approveRevision, rejectRevision } from "@/lib/sites/publish";
 import { ProfileStorageUnconfigured } from "@/lib/profile/storage";
@@ -355,4 +356,72 @@ async function nextBrandUrl(args: {
 function emptyToNull(value: FormDataEntryValue | null): string | null {
   const text = String(value ?? "").trim();
   return text ? text : null;
+}
+
+export async function approveDocsPlanAction(formData: FormData) {
+  const session = await getViewSession();
+  const siteId = String(formData.get("siteId") ?? "");
+  const subdomain = String(formData.get("subdomain") ?? "");
+  const jobId = String(formData.get("jobId") ?? "");
+  const productRoot = String(formData.get("productRoot") ?? "");
+  const back = pathFor(subdomain);
+  if (!session) redirect(`/login?next=${back}`);
+  await blockActAsWrites();
+  const prisma = getPrisma();
+  if (!prisma) return redirectWithToast(back, "error", "The database is not connected.");
+  const site = await ownedSite(siteId, session.userId);
+  if (!site?.repoId) return redirectWithToast(back, "error", "Site not found.");
+  const job = await prisma.job.findFirst({
+    where: { id: jobId, repoId: site.repoId, status: "WAITING" },
+  });
+  if (!job) return redirectWithToast(back, "error", "That outline is no longer waiting.");
+  const stored = readStoredPlan(job.payload);
+  if (!stored) return redirectWithToast(back, "error", "That outline could not be read.");
+  let submitted: unknown;
+  try {
+    submitted = JSON.parse(String(formData.get("planJson") ?? ""));
+  } catch {
+    return redirectWithToast(back, "error", "The outline was not valid.");
+  }
+  if (!Array.isArray(submitted)) return redirectWithToast(back, "error", "The outline was not valid.");
+  const accepted = acceptOwnerPlan({
+    base: stored.pages,
+    submitted: submitted.flatMap((page) => {
+      if (!page || typeof page !== "object") return [];
+      const raw = page as { slug?: unknown; title?: unknown; section?: unknown; description?: unknown };
+      return [{
+        slug: typeof raw.slug === "string" ? raw.slug : "",
+        title: typeof raw.title === "string" ? raw.title : "",
+        section: typeof raw.section === "string" ? raw.section : "",
+        description: typeof raw.description === "string" ? raw.description : "",
+      }];
+    }),
+  });
+  if (!accepted.ok) return redirectWithToast(back, "error", accepted.error);
+  const replan = productRoot !== stored.productRoot;
+  const previous = job.payload && typeof job.payload === "object" && !Array.isArray(job.payload) ? job.payload : {};
+  await prisma.job.update({
+    where: { id: job.id },
+    data: {
+      status: "QUEUED",
+      phase: "QUEUED",
+      progress: 0,
+      detail: replan ? "Planning the selected product" : "Writing the approved outline",
+      availableAt: new Date(),
+      lockedBy: null,
+      leaseUntil: null,
+      payload: {
+        ...previous,
+        docsPlan: {
+          ...stored,
+          approved: !replan,
+          replan,
+          productRoot,
+          pages: replan ? stored.pages : accepted.plan,
+        },
+      },
+    },
+  });
+  revalidatePath(back);
+  return redirectWithToast(back, "success", replan ? "Planning that product." : "Outline approved.");
 }
