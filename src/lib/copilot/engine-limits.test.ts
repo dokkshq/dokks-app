@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pageWriteRequest } from "@/lib/copilot/prompts";
+import { pageCritiqueRequest, pageRewriteRequest, pageWriteRequest } from "@/lib/copilot/prompts";
 import { slugify } from "@/lib/copilot/product-model";
 import {
   DEFAULT_FIRST_BUILD_CAP_USD,
@@ -17,6 +17,9 @@ import {
   MAX_SNAPSHOT_FILES,
   MAX_TITLE_LENGTH,
   MAX_TREE_PATHS,
+  PAGE_CRITIQUE_MAX_TOKENS,
+  PAGE_REWRITE_MAX_TOKENS,
+  PAGE_WRITE_MAX_TOKENS,
   PIPELINE_COST_CEILING_USD,
   PUSH_DIGEST_CHARS,
   WRITE_CONCURRENCY,
@@ -27,6 +30,7 @@ import {
 import { GITHUB_REQUEST_TIMEOUT_MS } from "@/lib/github/repo-content";
 import { batchPaths, chooseProductArea, coverageNote, detectProductAreas, inProductArea, mergeFacts } from "@/lib/copilot/batches";
 import { extractFacts } from "@/lib/copilot/facts";
+import { normalizePlanSection } from "@/lib/copilot/components";
 import { acceptOwnerPlan } from "@/lib/copilot/plan-gate";
 import { pageQualityIssues } from "@/lib/copilot/review";
 import type { PlannedPage } from "@/lib/copilot/page-plan";
@@ -141,6 +145,16 @@ describe("plan gate", () => {
       expect(accepted.plan.map((item) => item.layout)).toEqual(["overview", "how-to"]);
     }
   });
+
+  it("maps leftover sections onto Get Started, Concepts, How-to, or Reference", () => {
+    expect(normalizePlanSection("Guides")).toBe("How-to");
+    expect(normalizePlanSection(null)).toBe("How-to");
+    expect(normalizePlanSection("")).toBe("How-to");
+    expect(normalizePlanSection("Introduction")).toBe("Get Started");
+    expect(normalizePlanSection("API reference")).toBe("Reference");
+    expect(normalizePlanSection("Concepts")).toBe("Concepts");
+    expect(["Get Started", "Concepts", "How-to", "Reference"]).toContain(normalizePlanSection("Something else"));
+  });
 });
 
 describe("page review", () => {
@@ -199,6 +213,28 @@ describe("writer guidance and renderer blocks", () => {
     expect(request.system).toContain("[!DANGER]");
     expect(request.user).toContain("Layout: get-started");
     expect(request.user).toContain("(home): Plugr");
+    expect(request.maxTokens).toBe(PAGE_WRITE_MAX_TOKENS);
+    expect(PAGE_WRITE_MAX_TOKENS).toBe(6_000);
+    expect(PAGE_REWRITE_MAX_TOKENS).toBe(4_000);
+    expect(PAGE_CRITIQUE_MAX_TOKENS).toBe(400);
+    expect(PAGE_REWRITE_MAX_TOKENS).toBeLessThan(PAGE_WRITE_MAX_TOKENS);
+    expect(
+      pageRewriteRequest({
+        pageTitle: "Getting started",
+        content: "Install",
+        violations: ["unsupported"],
+        factsDigest: "Audience: app",
+      }).maxTokens,
+    ).toBe(PAGE_REWRITE_MAX_TOKENS);
+    expect(
+      pageCritiqueRequest({
+        title: "Getting started",
+        question: "How do I install this?",
+        reader: "integrator",
+        content: "Install",
+        evidence: [],
+      }).maxTokens,
+    ).toBe(PAGE_CRITIQUE_MAX_TOKENS);
   });
 
   it("parses every docs block the renderer knows", () => {

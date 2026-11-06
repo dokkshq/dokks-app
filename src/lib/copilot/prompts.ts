@@ -2,7 +2,13 @@ import { productName } from "@/lib/brand";
 import { WRITER_COMPONENT_GUIDE } from "@/lib/copilot/components";
 import type { PageDraft } from "@/lib/copilot/contract";
 import { buildChangeDigest, buildRepoDigest, buildSummaryDigest } from "@/lib/copilot/digest";
-import { FIRST_BUILD_DIGEST_CHARS, PUSH_DIGEST_CHARS } from "@/lib/copilot/limits";
+import {
+  FIRST_BUILD_DIGEST_CHARS,
+  PAGE_CRITIQUE_MAX_TOKENS,
+  PAGE_REWRITE_MAX_TOKENS,
+  PAGE_WRITE_MAX_TOKENS,
+  PUSH_DIGEST_CHARS,
+} from "@/lib/copilot/limits";
 import type { RepoChange, RepoSnapshot } from "@/lib/github/repo-content";
 
 function systemPrompt(): string {
@@ -263,7 +269,7 @@ export function pageWriteRequest(args: {
     ]
       .filter((part) => part !== "")
       .join("\n"),
-    maxTokens: 2_200,
+    maxTokens: PAGE_WRITE_MAX_TOKENS,
   };
 }
 
@@ -293,7 +299,7 @@ export function pageCritiqueRequest(args: {
       "Page:",
       args.content.slice(0, 8_000),
     ].join("\n"),
-    maxTokens: 400,
+    maxTokens: PAGE_CRITIQUE_MAX_TOKENS,
   };
 }
 
@@ -322,7 +328,7 @@ export function pageRewriteRequest(args: {
       "Current page:",
       args.content.slice(0, 10_000),
     ].join("\n"),
-    maxTokens: 2_200,
+    maxTokens: PAGE_REWRITE_MAX_TOKENS,
   };
 }
 

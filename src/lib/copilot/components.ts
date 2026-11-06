@@ -21,6 +21,27 @@ export function isPlanSection(value: string): value is PlanSection {
   return (PLAN_SECTIONS as readonly string[]).includes(value);
 }
 
+/** Map a leftover or missing section onto Get Started, Concepts, How-to, or Reference. */
+export function normalizePlanSection(section: string | null | undefined): PlanSection {
+  const raw = (section ?? "").trim();
+  if (isPlanSection(raw)) return raw;
+  const key = raw.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (
+    key === "start" ||
+    key === "home" ||
+    key === "welcome" ||
+    key === "overview" ||
+    key === "introduction" ||
+    key.startsWith("get started") ||
+    key.startsWith("getting started")
+  ) {
+    return "Get Started";
+  }
+  if (key.includes("concept") || key === "explanation" || key === "explain") return "Concepts";
+  if (key.includes("reference") || key === "api" || key.startsWith("api ")) return "Reference";
+  return "How-to";
+}
+
 export function layoutForSection(section: string, slug: string): PageLayout {
   if (slug === "") return "overview";
   if (section === "Get Started") return "get-started";

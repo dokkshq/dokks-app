@@ -1,11 +1,11 @@
-import { layoutForSection, type PageLayout } from "@/lib/copilot/components";
+import { isPageLayout, layoutForSection, type PageLayout } from "@/lib/copilot/components";
 import { normalizeSlug, type PageDraft } from "@/lib/copilot/contract";
 import type { Audience, HttpRoute, RepoFacts } from "@/lib/copilot/facts";
 import { MAX_PLANNED_PAGES, WRITER_SOURCE_PATHS } from "@/lib/copilot/limits";
 import type { ProductModel } from "@/lib/copilot/product-model";
 import { buildProductModel } from "@/lib/copilot/product-model";
 import { extractProductSurface, type ProductSurface } from "@/lib/copilot/product-surface";
-import { isDomainModule, type RepoSnapshot } from "@/lib/github/repo-content";
+import { contentRank, isDomainModule, isPlanningPath, isRouteFile, rankContentPaths, type RepoSnapshot } from "@/lib/github/repo-content";
 
 export type PageKind = "home" | "guide" | "concept" | "api" | "reference";
 
@@ -202,7 +202,9 @@ export function mergePagePlan(input: {
       : "guide";
     if (input.base[0]?.reader === "user" && (kind === "api" || slug.startsWith("api-reference"))) continue;
     const section = kind === "api" || kind === "reference" ? "Reference" : kind === "concept" ? "Concepts" : kind === "home" ? "Get Started" : "How-to";
-    const layout = raw.layout ?? layoutForSection(section, slug);
+    const rawLayout = (raw as { layout?: unknown }).layout;
+    if (typeof rawLayout === "string" && rawLayout.length > 0 && !isPageLayout(rawLayout)) continue;
+    const layout = typeof rawLayout === "string" && isPageLayout(rawLayout) ? rawLayout : layoutForSection(section, slug);
     bySlug.set(slug, {
       slug,
       section,
@@ -270,6 +272,86 @@ export function productCritique(
     reasons.push("The page does not answer a question.");
   }
   return reasons;
+}
+
+const SOURCE_TOKEN_STOP = new Set([
+  "how",
+  "do",
+  "the",
+  "and",
+  "for",
+  "this",
+  "page",
+  "what",
+  "which",
+  "when",
+  "with",
+  "from",
+  "your",
+  "you",
+  "can",
+  "are",
+  "use",
+]);
+
+/**
+ * Added and renamed outline pages arrive with no source paths. Rank real repo
+ * files for them, using the same 20-path writer budget as planned pages.
+ */
+export function fillMissingPageSources(input: {
+  pages: PlannedPage[];
+  treePaths: string[];
+  facts: RepoFacts;
+  files?: Array<{ path: string }>;
+}): PlannedPage[] {
+  const readable = new Set((input.files ?? []).map((file) => file.path));
+  const pool = rankContentPaths(
+    (readable.size > 0 ? [...readable] : input.treePaths).filter((path) => !isPlanningPath(path)),
+  );
+  return input.pages.map((page) => {
+    if (page.sourcePaths.length > 0) return page;
+    return { ...page, sourcePaths: rankSourcesForPage(page, pool, input.facts) };
+  });
+}
+
+function rankSourcesForPage(page: PlannedPage, pool: string[], facts: RepoFacts): string[] {
+  if (pool.length === 0) return [];
+  const tokens = pageTokens(page);
+  const routeSources = new Set(facts.routes.map((route) => route.source));
+  const scored = pool.map((path) => {
+    const lower = path.toLowerCase();
+    const name = lower.split("/").pop() ?? "";
+    let score = 0;
+    for (const token of tokens) {
+      if (name.includes(token)) score += 30;
+      else if (lower.includes(`/${token}`) || lower.includes(`${token}.`) || lower.includes(`${token}/`)) score += 12;
+    }
+    if ((page.kind === "api" || page.layout === "reference") && (routeSources.has(path) || isRouteFile(path))) {
+      score += 16;
+    }
+    if ((page.layout === "overview" || page.slug === "" || page.layout === "get-started") && facts.readmePath === path) {
+      score += 18;
+    }
+    if (page.layout === "reference" && /(?:package\.json|schema\.prisma|\.env\.example)$/.test(lower)) score += 10;
+    if (isDomainModule(path)) score += 4;
+    return { path, score, rank: contentRank(path) };
+  });
+  scored.sort((a, b) => b.score - a.score || a.rank - b.rank || a.path.localeCompare(b.path));
+  const matched = scored.filter((item) => item.score >= 12);
+  const familiar = scored.filter((item) => item.rank <= 4);
+  const picked = matched.length > 0 ? matched : familiar.length > 0 ? familiar : scored;
+  return picked.slice(0, WRITER_SOURCE_PATHS).map((item) => item.path);
+}
+
+function pageTokens(page: Pick<PlannedPage, "slug" | "title" | "description" | "question">): string[] {
+  return [
+    ...new Set(
+      `${page.slug} ${page.title} ${page.description} ${page.question}`
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((token) => token.length >= 3 && !SOURCE_TOKEN_STOP.has(token)),
+    ),
+  ];
 }
 
 export function readSourcePaths(content: string): string[] {
