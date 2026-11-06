@@ -6,7 +6,10 @@ import { getViewSession } from "@/lib/admin/act-as";
 import { blockActAsWrites } from "@/lib/admin/guard";
 import { getPrisma } from "@/lib/db";
 import { approveRevision, rejectRevision } from "@/lib/sites/publish";
+import { ProfileStorageUnconfigured } from "@/lib/profile/storage";
+import { BrandImageError, deleteSiteBrandImage, uploadSiteBrandImage } from "@/lib/sites/brand-storage";
 import { redirectWithToast } from "@/lib/toast-server";
+import { retryWorkspaceBuild } from "@/lib/workspace/retry-build";
 
 function pathFor(subdomain: string, section = "") {
   return `/dashboard/w/${subdomain}${section}`;
@@ -17,8 +20,34 @@ async function ownedSite(siteId: string, userId: string) {
   if (!prisma) return null;
   return prisma.site.findFirst({
     where: { id: siteId, ownerId: userId },
-    select: { id: true, subdomain: true, repoId: true },
+    select: { id: true, subdomain: true, repoId: true, status: true },
   });
+}
+
+export async function retryBuildAction(formData: FormData) {
+  const siteId = String(formData.get("siteId") ?? "");
+  const jobId = String(formData.get("jobId") ?? "");
+  const subdomainHint = String(formData.get("subdomain") ?? "");
+  const returnTo = String(formData.get("returnTo") ?? "");
+  const session = await getViewSession();
+  const back =
+    returnTo.startsWith("/dashboard/w/") && !returnTo.includes("//")
+      ? returnTo
+      : subdomainHint
+        ? pathFor(subdomainHint, "/builds")
+        : "/dashboard";
+  if (!siteId || !jobId) redirect("/dashboard");
+  if (!session) redirect(`/login?next=${encodeURIComponent(back)}`);
+  await blockActAsWrites();
+  const result = await retryWorkspaceBuild({ session, siteId, jobId });
+  const destination =
+    result.subdomain && returnTo.startsWith(`/dashboard/w/${result.subdomain}`)
+      ? returnTo
+      : result.subdomain
+        ? pathFor(result.subdomain, "/builds")
+        : back;
+  if (!result.ok) return redirectWithToast(destination, "error", result.error);
+  return redirectWithToast(destination, "success", "Build queued again.");
 }
 
 export async function publishDraftAction(formData: FormData) {
@@ -79,23 +108,80 @@ export async function saveWorkspaceAction(formData: FormData) {
   const kind = String(formData.get("kind") ?? "");
   if (kind === "branding") {
     const theme = String(formData.get("theme") ?? "");
-    const color = String(formData.get("primaryColor") ?? "");
+    const appearance = String(formData.get("appearance") ?? "");
+    const color = String(formData.get("primaryColor") ?? "").trim().toLowerCase();
+    const back = pathFor(site.subdomain, "/branding");
     if (theme !== "LEDGER" && theme !== "MINIMAL") {
-      return redirectWithToast(pathFor(site.subdomain, "/branding"), "error", "Choose a theme.");
+      return redirectWithToast(back, "error", "Choose a theme.");
     }
-    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
-      return redirectWithToast(pathFor(site.subdomain, "/branding"), "error", "Use a #RRGGBB color.");
+    if (appearance !== "SYSTEM" && appearance !== "LIGHT" && appearance !== "DARK") {
+      return redirectWithToast(back, "error", "Choose an appearance.");
     }
+    if (!/^#[0-9a-f]{6}$/.test(color)) {
+      return redirectWithToast(back, "error", "Choose a primary color.");
+    }
+    const current = await prisma.site.findUnique({
+      where: { id: site.id },
+      select: { logoLightUrl: true, logoDarkUrl: true, faviconUrl: true },
+    });
+    if (!current) return redirectWithToast("/dashboard", "error", "Site not found.");
     await prisma.site.update({
       where: { id: site.id },
-      data: {
-        theme,
-        primaryColor: color,
-        logoLightUrl: emptyToNull(formData.get("logoLightUrl")),
-        logoDarkUrl: emptyToNull(formData.get("logoDarkUrl")),
-        faviconUrl: emptyToNull(formData.get("faviconUrl")),
-      },
+      data: { theme, appearance, primaryColor: color },
     });
+    const created: string[] = [];
+    try {
+      const logoLight = await nextBrandUrl({
+        siteId: site.id,
+        slot: "logo-light",
+        field: "logoLight",
+        formData,
+        remove: formData.get("removeLogoLight") === "1",
+        current: current.logoLightUrl,
+        created,
+      });
+      const logoDark = await nextBrandUrl({
+        siteId: site.id,
+        slot: "logo-dark",
+        field: "logoDark",
+        formData,
+        remove: formData.get("removeLogoDark") === "1",
+        current: current.logoDarkUrl,
+        created,
+      });
+      const favicon = await nextBrandUrl({
+        siteId: site.id,
+        slot: "favicon",
+        field: "favicon",
+        formData,
+        remove: formData.get("removeFavicon") === "1",
+        current: current.faviconUrl,
+        created,
+      });
+      await prisma.site.update({
+        where: { id: site.id },
+        data: {
+          logoLightUrl: logoLight.url,
+          logoDarkUrl: logoDark.url,
+          faviconUrl: favicon.url,
+        },
+      });
+      await Promise.all([logoLight.retire, logoDark.retire, favicon.retire].map((url) => deleteSiteBrandImage(url)));
+    } catch (error) {
+      if (isNextControlFlow(error)) throw error;
+      console.error("[branding] image save failed", {
+        name: error instanceof Error ? error.name : "unknown",
+        message: error instanceof Error ? error.message : String(error),
+        reason:
+          error !== null && typeof error === "object" && "reason" in error
+            ? String((error as { reason?: unknown }).reason)
+            : undefined,
+      });
+      await Promise.all(created.map((url) => deleteSiteBrandImage(url)));
+      return redirectWithToast(back, "error", imageSaveMessage(error));
+    }
+    revalidatePath(`/preview/${site.subdomain}`);
+    revalidatePath(pathFor(site.subdomain), "layout");
   } else if (kind === "domain") {
     const nextSubdomain = String(formData.get("nextSubdomain") ?? "").trim().toLowerCase();
     const customDomain = emptyToNull(formData.get("customDomain"));
@@ -183,6 +269,87 @@ export async function deleteWorkspaceAction(formData: FormData) {
   await prisma.site.delete({ where: { id: site.id } });
   revalidatePath("/dashboard");
   return redirectWithToast("/dashboard", "success", "Deleted.");
+}
+
+function imageSaveMessage(error: unknown): string {
+  const name = error instanceof Error ? error.name : "";
+  const reason =
+    error !== null && typeof error === "object" && "reason" in error
+      ? String((error as { reason?: unknown }).reason)
+      : "";
+  if (name === "ProfileStorageUnconfigured" || error instanceof ProfileStorageUnconfigured) {
+    return "Image uploads are not configured. Set BLOB_READ_WRITE_TOKEN.";
+  }
+  if (name === "BrandImageError" || error instanceof BrandImageError || reason === "size" || reason === "type") {
+    return reason === "size" ? "Images must be 2 MB or smaller." : "Use a PNG, JPEG, WebP, or ICO image.";
+  }
+  if (error instanceof Error && error.message.startsWith("Vercel Blob:")) {
+    return error.message.replace(/^Vercel Blob:\s*/, "Image storage failed. ");
+  }
+  if (error instanceof Error && error.message.includes("received no file bytes")) return error.message;
+  return "Could not save the images.";
+}
+
+function isNextControlFlow(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("digest" in error)) return false;
+  const digest = (error as { digest?: unknown }).digest;
+  return typeof digest === "string" && digest.startsWith("NEXT_");
+}
+
+function describeFormValue(value: FormDataEntryValue) {
+  if (typeof value === "string") return { kind: "text", length: value.length };
+  return {
+    kind: value.constructor?.name ?? "blob",
+    name: "name" in value ? value.name : "",
+    type: value.type,
+    size: value.size,
+    readable: typeof value.arrayBuffer === "function",
+  };
+}
+
+function uploadedBlob(formData: FormData, name: string): Blob | null {
+  let best: Blob | null = null;
+  for (const value of formData.getAll(name)) {
+    if (typeof value === "string" || typeof value.arrayBuffer !== "function" || value.size <= 0) continue;
+    if (!best || value.size > best.size) best = value;
+  }
+  return best;
+}
+
+async function nextBrandUrl(args: {
+  siteId: string;
+  slot: "logo-light" | "logo-dark" | "favicon";
+  field: "logoLight" | "logoDark" | "favicon";
+  formData: FormData;
+  remove: boolean;
+  current: string | null;
+  created: string[];
+}): Promise<{ url: string | null; retire: string | null }> {
+  const entries = args.formData.getAll(args.field).map(describeFormValue);
+  const file = uploadedBlob(args.formData, args.field);
+  const chosen = args.formData.get(`${args.field}Chosen`) === "1";
+  console.info("[branding] file", {
+    field: args.field,
+    chosen,
+    remove: args.remove,
+    hadUrl: Boolean(args.current),
+    entries,
+  });
+  if (chosen && !file) {
+    throw new Error(`${args.field} was selected in the browser, but the server received no file bytes.`);
+  }
+  if (file) {
+    const stored = await uploadSiteBrandImage({ siteId: args.siteId, slot: args.slot, file });
+    args.created.push(stored.url);
+    console.info("[branding] stored", { field: args.field, url: stored.url });
+    return { url: stored.url, retire: args.current };
+  }
+  if (args.remove) {
+    console.info("[branding] removed", { field: args.field });
+    return { url: null, retire: args.current };
+  }
+  console.info("[branding] unchanged", { field: args.field });
+  return { url: args.current, retire: null };
 }
 
 function emptyToNull(value: FormDataEntryValue | null): string | null {

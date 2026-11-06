@@ -8,10 +8,10 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
   devIndicators: false,
   experimental: {
-    // Profile uploads are capped at 2 MB by application validation. Leave
-    // room for multipart boundaries and part headers.
+    // Profile and branding uploads are capped at 2 MB each. Branding can
+    // send a light logo, a dark logo, and a favicon in one save.
     serverActions: {
-      bodySizeLimit: "3mb",
+      bodySizeLimit: "8mb",
     },
   },
   turbopack: {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productName } from "@/lib/brand";
 import {
   readEmailPreferenceToken,
   setAnnouncementPreference,
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
-  return new NextResponse("Unsubscribed from Opentip product updates.", {
+  return new NextResponse(`Unsubscribed from ${productName()} product updates.`, {
     status: 200,
     headers: { "content-type": "text/plain; charset=utf-8" },
   });

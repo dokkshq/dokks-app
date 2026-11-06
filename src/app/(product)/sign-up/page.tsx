@@ -1,4 +1,5 @@
 import { AuthScreen } from "@/components/auth/auth-screen";
+import { productName } from "@/lib/brand";
 import { redirectAuthenticatedEntry } from "@/lib/auth/entry";
 import { authErrors } from "@/lib/auth/messages";
 import { safeRelativePath } from "@/lib/auth/gate";
@@ -20,7 +21,7 @@ export default async function SignUpPage({
   return (
     <AuthScreen
       title="Create your account"
-      subtitle="Opentip is in a closed beta."
+      subtitle={`${productName()} is in a closed beta.`}
       githubHref={`/api/auth/github${suffix}`}
       returnTo="sign-up"
       nextPath={next}

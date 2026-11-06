@@ -104,7 +104,7 @@ export async function loadSiteCards(session: Session): Promise<{
         primaryColor: site.primaryColor,
         pageCount: site._count.pages,
         pendingReviews: site.revisions.length,
-        latestBuildStatus: site.repo.jobs[0]?.status ?? null,
+        latestBuildStatus: site.repo?.jobs[0]?.status ?? null,
         preview: false,
       })),
     };

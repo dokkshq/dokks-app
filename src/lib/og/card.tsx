@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ImageResponse } from "next/og";
-import { OPENTIP_BLUE, OPENTIP_HAIRLINE, OPENTIP_INK, OPENTIP_MUTED } from "@/lib/brand";
+import { HAIRLINE, INK, MUTED, brandPrimary } from "@/lib/brand";
 import type { OgParams } from "@/lib/og/sign";
 
 export async function renderOgImage(params: OgParams): Promise<ImageResponse> {
@@ -29,7 +29,7 @@ function OgCard({ params }: { params: OgParams }) {
         display: "flex",
         position: "relative",
         background: "#FAFAFA",
-        color: OPENTIP_INK,
+        color: INK,
         fontFamily: "Geist",
       }}
     >
@@ -52,7 +52,7 @@ function OgCard({ params }: { params: OgParams }) {
               y1={line.y1}
               x2={line.x2}
               y2={line.y2}
-              stroke={OPENTIP_HAIRLINE}
+              stroke={HAIRLINE}
               strokeWidth="1"
             />
           ))}
@@ -66,7 +66,7 @@ function OgCard({ params }: { params: OgParams }) {
           width: 560,
           height: 560,
           borderRadius: 560,
-          background: params.primary || OPENTIP_BLUE,
+          background: params.primary || brandPrimary(),
           opacity: 0.16,
         }}
       />
@@ -81,7 +81,7 @@ function OgCard({ params }: { params: OgParams }) {
           height: params.background ? 534 : 630,
           background: params.background ? "rgba(250,250,250,0.94)" : "transparent",
           borderRadius: params.background ? 28 : 0,
-          border: params.background ? `1px solid ${OPENTIP_HAIRLINE}` : "none",
+          border: params.background ? `1px solid ${HAIRLINE}` : "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -145,7 +145,7 @@ function OgCard({ params }: { params: OgParams }) {
             {params.title}
           </div>
           {params.description ? (
-            <div style={{ display: "flex", fontSize: 28, lineHeight: 1.35, color: OPENTIP_MUTED }}>
+            <div style={{ display: "flex", fontSize: 28, lineHeight: 1.35, color: MUTED }}>
               {params.description}
             </div>
           ) : null}

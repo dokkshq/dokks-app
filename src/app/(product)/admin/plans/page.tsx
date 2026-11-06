@@ -1,4 +1,6 @@
 import { PageHeader } from "@/components/shell/page-header";
+import { Input } from "@/components/ui/input";
+import { SelectField } from "@/components/ui/select";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -71,22 +73,21 @@ export default async function PlansPage({
               </p>
             ) : (
               <form action={changeUserPlan} className="flex flex-col gap-3">
-                <select name="userId" required className="h-9 rounded-control border border-border bg-background px-3 text-sm">
-                  <option value="">Choose a user</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.login} {user.email ? `(${user.email})` : ""}
-                    </option>
-                  ))}
-                </select>
-                <select name="planId" required className="h-9 rounded-control border border-border bg-background px-3 text-sm">
-                  <option value="">Choose a plan</option>
-                  {dbPlans.map((plan) => (
-                    <option key={plan.id} value={plan.id}>
-                      {plan.name}
-                    </option>
-                  ))}
-                </select>
+                <SelectField
+                  name="userId"
+                  required
+                  placeholder="Choose a user"
+                  options={users.map((user) => ({
+                    value: user.id,
+                    label: user.email ? `${user.login} (${user.email})` : user.login,
+                  }))}
+                />
+                <SelectField
+                  name="planId"
+                  required
+                  placeholder="Choose a plan"
+                  options={dbPlans.map((plan) => ({ value: plan.id, label: plan.name }))}
+                />
                 <SubmitButton className="w-fit" loadingText="Saving...">
                   Save plan
                 </SubmitButton>
@@ -101,30 +102,17 @@ export default async function PlansPage({
           </CardHeader>
           <CardContent>
             <form action={addCredits} className="flex flex-col gap-3">
-              <select name="userId" required className="h-9 rounded-control border border-border bg-background px-3 text-sm">
-                <option value="">User</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.login} ({user.creditBalance})
-                  </option>
-                ))}
-              </select>
-              <input
-                name="amount"
-                type="number"
-                step="1"
-                min="1"
-                max="1000000"
+              <SelectField
+                name="userId"
                 required
-                placeholder="Credits"
-                className="h-9 rounded-control border border-border bg-background px-4 text-sm"
+                placeholder="User"
+                options={users.map((user) => ({
+                  value: user.id,
+                  label: `${user.login} (${user.creditBalance})`,
+                }))}
               />
-              <input
-                name="reason"
-                required
-                placeholder="Reason"
-                className="h-9 rounded-control border border-border bg-background px-4 text-sm"
-              />
+              <Input name="amount" type="text" inputMode="numeric" required placeholder="Credits" />
+              <Input name="reason" required placeholder="Reason" />
               <div className="flex gap-2">
                 <SubmitButton name="mode" value="grant" className="w-fit" loadingText="Granting...">
                   Grant

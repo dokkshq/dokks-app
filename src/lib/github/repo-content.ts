@@ -1,4 +1,8 @@
 import { githubApiHeaders } from "@/lib/github/app";
+import {
+  githubApiError,
+  isGithubRateLimitResponse,
+} from "@/lib/github/api-error";
 
 const API = "https://api.github.com";
 const MAX_TREE_PATHS = 2_000;
@@ -183,7 +187,7 @@ export async function readRepoSnapshot(args: {
     { headers: githubApiHeaders(args.token), signal: AbortSignal.timeout(20_000) },
   );
   if (!treeResponse.ok) {
-    throw new Error(`GitHub tree request failed (${treeResponse.status}).`);
+    throw githubApiError("GitHub tree request", treeResponse);
   }
   const treeBody = (await treeResponse.json()) as {
     truncated?: unknown;
@@ -248,7 +252,7 @@ async function readBranchSha(
     { headers: githubApiHeaders(token), signal: AbortSignal.timeout(20_000) },
   );
   if (!response.ok) {
-    throw new Error(`GitHub branch lookup failed (${response.status}).`);
+    throw githubApiError("GitHub branch lookup", response);
   }
   const body = (await response.json()) as { object?: { sha?: unknown } };
   if (typeof body.object?.sha !== "string" || !body.object.sha) {
@@ -277,7 +281,10 @@ async function readBlobs(args: {
           `${API}/repos/${encodeURIComponent(args.owner)}/${encodeURIComponent(args.name)}/git/blobs/${encodeURIComponent(sha)}`,
           { headers: githubApiHeaders(args.token), signal: AbortSignal.timeout(20_000) },
         );
-        if (!response.ok) return null;
+        if (!response.ok) {
+          if (response.status === 404) return null;
+          throw githubApiError("GitHub blob request", response);
+        }
         const body = (await response.json()) as { content?: unknown; encoding?: unknown };
         if (typeof body.content !== "string") return null;
         const raw =
@@ -323,6 +330,9 @@ export async function readRepoChange(args: {
     { headers: githubApiHeaders(args.token), signal: AbortSignal.timeout(20_000) },
   );
   if (!response.ok) {
+    if (isGithubRateLimitResponse(response)) {
+      throw githubApiError("GitHub compare request", response);
+    }
     const fallback = await readRepoSnapshot({ ...args, fetcher, ref: args.after });
     return emptyChange(args.before, args.after, fallback);
   }

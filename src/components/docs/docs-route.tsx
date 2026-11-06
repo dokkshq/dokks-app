@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { DocsChrome, type DocsNavItem, type DocsSourceLink } from "@/components/docs/docs-chrome";
 import { extractHeadings, readSourceComment, sourceUrl } from "@/components/docs/highlight";
 import { DocsMarkdown } from "@/components/docs/markdown";
+import { publicAssetUrl } from "@/lib/media/public-url";
 import { findPage } from "@/lib/sites/load";
 import type { DocsSite } from "@/lib/sites/types";
 
@@ -44,8 +45,8 @@ export function DocsRoute({
       theme={site.theme}
       appearance={site.appearance}
       primaryColor={site.primaryColor}
-      logoLightUrl={site.logoLightUrl}
-      logoDarkUrl={site.logoDarkUrl}
+      logoLightUrl={publicAssetUrl(site.logoLightUrl)}
+      logoDarkUrl={publicAssetUrl(site.logoDarkUrl)}
       logoHref={site.logoHref}
       items={items}
       searchItems={items.map((item) => {

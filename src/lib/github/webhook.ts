@@ -186,7 +186,7 @@ async function applyEvent(args: {
       repoId: known.id,
       githubRepoId,
       kind: "PUSH_UPDATE",
-      provider: "GROQ",
+      provider: "XAI",
       model: DEFAULT_SMALL_MODEL,
       idempotencyKey: `push:${githubRepoId}:${after}`,
       deliveryId: args.deliveryId,

@@ -1,4 +1,5 @@
 import { Text } from "react-email";
+import { productName } from "@/lib/brand";
 import {
   EmailButton,
   EmailLayout,
@@ -28,7 +29,7 @@ export function AnnouncementEmail({
       preview={previewFor(body)}
       heading={title}
       appUrl={appUrl}
-      reason="You received this because you have an Opentip beta account."
+      reason={`You received this because you have a ${productName()} beta account.`}
       preferences={preferences}
     >
       <Text
@@ -42,8 +43,8 @@ export function AnnouncementEmail({
       >
         {body}
       </Text>
-      <EmailParagraph>Open Opentip to see what is new in your workspace.</EmailParagraph>
-      <EmailButton href={`${appUrl.replace(/\/$/, "")}/dashboard`} label="Open Opentip" />
+      <EmailParagraph>Open {productName()} to see what is new in your workspace.</EmailParagraph>
+      <EmailButton href={`${appUrl.replace(/\/$/, "")}/dashboard`} label={`Open ${productName()}`} />
     </EmailLayout>
   );
 }

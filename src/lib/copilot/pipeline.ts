@@ -1,3 +1,4 @@
+import { PIPELINE_COST_CEILING_USD } from "@/lib/copilot/cost";
 import { parseModelJson, type PageDraft } from "@/lib/copilot/contract";
 import { factsDigest, type RepoFacts } from "@/lib/copilot/facts";
 import {
@@ -5,13 +6,17 @@ import {
   mergePagePlan,
   pagesAffectedByChange,
   planPagesFromFacts,
+  productCritique,
   readSourcePaths,
   withSources,
   type PlannedPage,
 } from "@/lib/copilot/page-plan";
+import { buildProductModel, mergeProductModel, type ProductJob, type ProductModel, type ProductNoun } from "@/lib/copilot/product-model";
+import { extractProductSurface } from "@/lib/copilot/product-surface";
 import {
   chatPlanRequest,
-  mapRequest,
+  modelRequest,
+  pageCritiqueRequest,
   pageRewriteRequest,
   pageWriteRequest,
   planRequest,
@@ -21,7 +26,7 @@ import { repairSiteLinks, verifyPage, type Violation } from "@/lib/copilot/verif
 import type { RepoFile, RepoSnapshot } from "@/lib/github/repo-content";
 
 const PAGE_CONCURRENCY = 4;
-const COST_CEILING_USD = 1.4;
+const COST_CEILING_USD = PIPELINE_COST_CEILING_USD;
 const SOURCE_BUDGET = 14_000;
 
 export type StageUsage = {
@@ -55,11 +60,6 @@ export type PipelineResult = {
   verification: PageVerification[];
 };
 
-type CodeMap = {
-  audience: RepoFacts["audience"];
-  summary: string;
-};
-
 export async function runFirstBuildPipeline(args: {
   heavy: CopilotProvider;
   small: CopilotProvider;
@@ -70,10 +70,16 @@ export async function runFirstBuildPipeline(args: {
 }): Promise<PipelineResult> {
   const usage = blankUsage();
   const verification: PageVerification[] = [];
-  const mapped = await mapCodebase(args.small, args.siteName, args.facts, args.snapshot, usage);
-  const facts = { ...args.facts, audience: mapped.audience };
-  const base = planPagesFromFacts({ facts, treePaths: args.snapshot.treePaths });
-  const suggested = await suggestPages(args.heavy, args.siteName, facts, base, usage);
+  const surface = extractProductSurface(args.snapshot, args.facts);
+  const model = await refineProductModel(args.heavy, args.siteName, args.facts, args.snapshot, surface, usage);
+  const facts = args.facts;
+  const base = planPagesFromFacts({
+    facts,
+    treePaths: args.snapshot.treePaths,
+    files: args.snapshot.files,
+    model,
+  });
+  const suggested = await suggestPages(args.heavy, args.siteName, facts, base, model, usage);
   const plan = mergePagePlan({
     base,
     suggested,
@@ -91,12 +97,13 @@ export async function runFirstBuildPipeline(args: {
     treePaths: args.snapshot.treePaths,
     usage,
     verification,
+    model,
   });
   const repaired = repairSiteLinks(drafts);
   return {
     pages: repaired.pages,
     removedSlugs: [],
-    changeNote: mapped.summary.slice(0, 300) || null,
+    changeNote: model.promise.slice(0, 300) || null,
     usage,
     verification,
   };
@@ -116,7 +123,11 @@ export async function runPushPipeline(args: {
 }): Promise<PipelineResult> {
   const usage = blankUsage();
   const verification: PageVerification[] = [];
-  const freshPlan = planPagesFromFacts({ facts: args.facts, treePaths: args.treePaths });
+  const freshPlan = planPagesFromFacts({
+    facts: args.facts,
+    treePaths: args.treePaths,
+    files: args.files,
+  });
   const affected = pagesAffectedByChange({
     pages: args.existingPages,
     changedPaths: args.changedPaths,
@@ -146,6 +157,8 @@ export async function runPushPipeline(args: {
       navOrder: page.navOrder,
       kind: page.slug.startsWith("api-reference") ? "api" : "guide",
       audience: args.facts.audience,
+      reader: "integrator",
+      question: page.description ?? page.title,
       sourcePaths: readSourcePaths(page.content),
       routes: page.slug.startsWith("api-reference") ? args.facts.routes : [],
     });
@@ -213,6 +226,8 @@ export async function runChatPipeline(args: {
     navOrder: page.navOrder,
     kind: page.slug.startsWith("api-reference") ? "api" : page.slug === "" ? "home" : "guide",
     audience: facts?.audience ?? "app",
+    reader: "integrator",
+    question: page.description ?? page.title,
     sourcePaths: readSourcePaths(page.content),
     routes: facts && page.slug.startsWith("api-reference") ? facts.routes : [],
   }));
@@ -265,29 +280,61 @@ export async function runChatPipeline(args: {
   };
 }
 
-async function mapCodebase(
-  small: CopilotProvider,
+async function refineProductModel(
+  heavy: CopilotProvider,
   siteName: string,
   facts: RepoFacts,
   snapshot: RepoSnapshot,
+  surface: ReturnType<typeof extractProductSurface>,
   usage: PipelineUsage,
-): Promise<CodeMap> {
-  const tree = snapshot.treePaths.slice(0, 250).join("\n");
-  const completion = await small.complete(
-    mapRequest({ siteName, factsDigest: factsDigest(facts, null), tree }),
+): Promise<ProductModel> {
+  const base = buildProductModel(surface, facts);
+  const completion = await heavy.complete(
+    modelRequest({
+      siteName,
+      kind: surface.kind,
+      reader: base.reader,
+      promise: base.promise,
+      screens: surface.screens.map((screen) => `${screen.route} ${screen.title} (${screen.source})`),
+      actions: surface.actions.map((action) => `${action.label} (${action.source})`),
+      endpoints: surface.endpoints.slice(0, 20).map((route) => `${route.method} ${route.path}`),
+    }),
   );
-  addUsage(usage, "map", completion);
+  addUsage(usage, "model", completion);
   try {
     const json = parseModelJson(completion.text);
-    const audience =
-      json.audience === "library" || json.audience === "cli" || json.audience === "app"
-        ? json.audience
-        : facts.audience;
-    const summary = typeof json.summary === "string" ? json.summary.trim().slice(0, 1_200) : "";
-    return { audience, summary };
+    const jobs = Array.isArray(json.jobs) ? json.jobs.flatMap(readJob) : [];
+    const nouns = Array.isArray(json.nouns) ? json.nouns.flatMap(readNoun) : [];
+    const promise = typeof json.promise === "string" ? json.promise : "";
+    return mergeProductModel(base, { promise, jobs, nouns }, snapshot.treePaths);
   } catch {
-    return { audience: facts.audience, summary: facts.packageDescription ?? "" };
+    return base;
   }
+}
+
+function readJob(value: unknown): ProductJob[] {
+  if (!value || typeof value !== "object") return [];
+  const job = value as { title?: unknown; slug?: unknown; question?: unknown; evidence?: unknown };
+  const title = typeof job.title === "string" ? job.title.trim() : "";
+  const evidence = Array.isArray(job.evidence) ? job.evidence.filter((item): item is string => typeof item === "string") : [];
+  if (!title || evidence.length === 0) return [];
+  const slug = typeof job.slug === "string" && job.slug.trim() ? job.slug.trim() : title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return [{
+    slug,
+    title,
+    question: typeof job.question === "string" && job.question.trim() ? job.question.trim() : `How do I ${title}?`,
+    evidence,
+  }];
+}
+
+function readNoun(value: unknown): ProductNoun[] {
+  if (!value || typeof value !== "object") return [];
+  const noun = value as { name?: unknown; slug?: unknown; evidence?: unknown };
+  const name = typeof noun.name === "string" ? noun.name.trim() : "";
+  const evidence = Array.isArray(noun.evidence) ? noun.evidence.filter((item): item is string => typeof item === "string") : [];
+  if (!name || evidence.length === 0) return [];
+  const slug = typeof noun.slug === "string" && noun.slug.trim() ? noun.slug.trim() : name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return [{ slug, name, evidence }];
 }
 
 async function suggestPages(
@@ -295,12 +342,15 @@ async function suggestPages(
   siteName: string,
   facts: RepoFacts,
   base: PlannedPage[],
+  model: ProductModel,
   usage: PipelineUsage,
 ): Promise<PlannedPage[]> {
   const completion = await heavy.complete(
     planRequest({
       siteName,
       audience: facts.audience,
+      reader: model.reader,
+      promise: model.promise,
       factsDigest: factsDigest(facts, null),
       requiredSlugs: base.map((page) => page.slug || "(home)"),
     }),
@@ -367,6 +417,7 @@ async function writePlan(args: {
   treePaths: string[];
   usage: PipelineUsage;
   verification: PageVerification[];
+  model?: ProductModel;
   previous?: Map<string, string>;
   instruction?: string;
   verifyFacts?: boolean;
@@ -397,6 +448,8 @@ async function writePlan(args: {
             section: page.section,
             kind: page.kind,
             audience: page.audience,
+            reader: page.reader,
+            question: page.question,
           },
           factsDigest: args.instruction ? `${digest}\n\nEdit instruction:\n${args.instruction}` : digest,
           routeList,
@@ -416,14 +469,36 @@ async function writePlan(args: {
     }
     let violations =
       args.verifyFacts === false ? [] : verifyPage(content, args.facts, args.treePaths);
-    if (violations.length > 0 && args.usage.estimatedCostUsd < COST_CEILING_USD) {
+    let reasons = [
+      ...violations.map((item) => `${item.kind} ${item.value}`),
+      ...(args.model ? productCritique(content, page, args.model) : []),
+    ];
+    if (reasons.length === 0 && args.model && args.usage.estimatedCostUsd < COST_CEILING_USD) {
+      try {
+        const completion = await args.heavy.complete(
+          pageCritiqueRequest({
+            title,
+            question: page.question,
+            reader: page.reader,
+            content,
+            evidence: page.sourcePaths,
+          }),
+        );
+        addUsage(args.usage, `critique:${page.slug || "home"}`, completion);
+        const verdict = readCritique(completion.text);
+        if (verdict && !verdict.pass) reasons = verdict.reasons;
+      } catch (error) {
+        if (!isContractMiss(error)) throw error;
+      }
+    }
+    if (reasons.length > 0 && args.usage.estimatedCostUsd < COST_CEILING_USD) {
       rewritten = true;
       try {
         const completion = await args.small.complete(
           pageRewriteRequest({
             pageTitle: title,
             content,
-            violations: violations.map((item) => `${item.kind} ${item.value}`),
+            violations: reasons,
             factsDigest: digest,
           }),
         );
@@ -437,20 +512,27 @@ async function writePlan(args: {
       } catch (error) {
         if (!isContractMiss(error)) throw error;
       }
-      violations = verifyPage(content, args.facts, args.treePaths);
+      violations = args.verifyFacts === false ? [] : verifyPage(content, args.facts, args.treePaths);
+      reasons = [
+        ...violations.map((item) => `${item.kind} ${item.value}`),
+        ...(args.model ? productCritique(content, page, args.model) : []),
+      ];
     }
-    if (args.verifyFacts !== false && violations.length > 0) {
+    const productReasons = args.model ? productCritique(content, page, args.model) : [];
+    if (violations.length > 0 || (productReasons.length > 0 && page.kind === "home")) {
       const stub = factualPageContent(page, args.facts, args.repoFullName);
       title = stub.title;
       description = stub.description;
       content = stub.content;
       stubbed = true;
       violations = verifyPage(content, args.facts, args.treePaths);
+    } else if (productReasons.length > 0) {
+      return null;
     }
     args.verification.push({ slug: page.slug, violations, rewritten, stubbed });
     return draftFrom(page, title, description, withSources(content, page.sourcePaths));
   });
-  return written;
+  return written.filter((page): page is PageDraft => page !== null);
 }
 
 function draftFrom(page: PlannedPage, title: string, description: string, content: string): PageDraft {
@@ -462,6 +544,19 @@ function draftFrom(page: PlannedPage, title: string, description: string, conten
     navOrder: page.navOrder,
     content,
   };
+}
+
+function readCritique(text: string): { pass: boolean; reasons: string[] } | null {
+  try {
+    const json = parseModelJson(text);
+    if (typeof json.pass !== "boolean") return null;
+    const reasons = Array.isArray(json.reasons)
+      ? json.reasons.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 6)
+      : [];
+    return { pass: json.pass, reasons: reasons.length > 0 ? reasons : ["The page does not answer its question."] };
+  } catch {
+    return null;
+  }
 }
 
 function readWrittenPage(text: string): { title: string; description: string; content: string } | null {

@@ -10,7 +10,7 @@ export type NewJob = {
   repoId: string;
   githubRepoId: string;
   kind: "FIRST_BUILD" | "PUSH_UPDATE" | "CHAT_EDIT";
-  provider: "XAI" | "GROQ" | "FAKE";
+  provider: "XAI" | "FAKE";
   model: string;
   idempotencyKey: string;
   deliveryId: string;

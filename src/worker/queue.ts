@@ -198,8 +198,7 @@ export async function retryFailedJob(jobId: string): Promise<boolean> {
         data: {
           status: "QUEUED",
           phase: "QUEUED",
-          progress: 0,
-          detail: "Queued to retry",
+          detail: "Continuing",
           error: null,
           attempts: 0,
           availableAt: new Date(),

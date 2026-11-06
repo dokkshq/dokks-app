@@ -3,19 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
-import { OpentipLockup } from "@/components/brand/logo";
+import { BrandLockup } from "@/components/brand/logo";
+import { marketingUrl } from "@/lib/brand";
 import { UserMenu, type MenuUser } from "@/components/shell/user-menu";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { cn } from "cn";
-
-const links = [
-  { href: "/dashboard", label: "Workspaces" },
-  { href: "/dashboard/usage", label: "Usage" },
-  { href: "https://opentip.tech", label: "Docs", external: true },
-  { href: "/dashboard/feedback", label: "Feedback" },
-];
 
 export function ProductFrame({
   user,
@@ -28,6 +22,12 @@ export function ProductFrame({
   banner?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const links = [
+    { href: "/dashboard", label: "Workspaces" },
+    { href: "/dashboard/usage", label: "Usage" },
+    { href: marketingUrl(), label: "Docs", external: true },
+    { href: "/dashboard/feedback", label: "Feedback" },
+  ];
   return (
     <div className="min-h-screen bg-background">
       {actAs ? (
@@ -50,7 +50,7 @@ export function ProductFrame({
             <SheetContent side="left" className="w-72">
               <SheetHeader>
                 <SheetTitle>
-                  <OpentipLockup />
+                  <BrandLockup />
                 </SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-1 px-4">
@@ -60,7 +60,7 @@ export function ProductFrame({
               </nav>
             </SheetContent>
           </Sheet>
-          <OpentipLockup />
+          <BrandLockup />
         </div>
         <div className="flex items-center gap-5">
           <nav className="hidden items-center gap-5 md:flex">

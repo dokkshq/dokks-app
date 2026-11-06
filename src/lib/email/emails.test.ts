@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { describe, expect, it } from "vitest";
+import { MARK_EMAIL, marketingUrl, productName } from "@/lib/brand";
 import { renderEmail } from "@/lib/email/render";
 import { AnnouncementEmail } from "@/lib/email/templates/announcement";
 import { BetaApprovalEmail, BetaInviteEmail } from "@/lib/email/templates/beta";
@@ -20,9 +21,9 @@ describe("branded emails", () => {
 
     expect(rendered.html).toContain("Your sign-in code");
     expect(rendered.html).toContain("123456");
-    expect(rendered.html).toContain(`${appUrl}/brand/mark-blue.png`);
-    expect(rendered.html).toContain("https://opentip.tech/privacy");
-    expect(rendered.text).toContain("Enter this code to finish signing in to Opentip.");
+    expect(rendered.html).toContain(`${appUrl}${MARK_EMAIL}`);
+    expect(rendered.html).toContain(`${marketingUrl()}/privacy`);
+    expect(rendered.text).toContain(`Enter this code to finish signing in to ${productName()}.`);
     expect(rendered.text).toContain("This code expires in 10 minutes.");
     expect(rendered.text).toContain("123456");
     expect(rendered.text).not.toContain("support@");
@@ -47,7 +48,7 @@ describe("branded emails", () => {
       createElement(BetaInviteEmail, { inviteUrl, appUrl }),
     );
 
-    expect(rendered.text.toLowerCase()).toContain("you're invited to the opentip beta");
+    expect(rendered.text.toLowerCase()).toContain(`you're invited to the ${productName().toLowerCase()} beta`);
     expect(rendered.html).toContain(inviteUrl);
     expect(rendered.text).toContain(inviteUrl);
   });

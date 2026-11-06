@@ -25,7 +25,7 @@ export async function uploadProfileImage(args: {
     `profiles/${args.userId}-${randomUUID()}.${validation.extension}`,
     Buffer.from(bytes),
     {
-      access: "public",
+      access: "private",
       contentType: validation.contentType,
       token,
       addRandomSuffix: false,

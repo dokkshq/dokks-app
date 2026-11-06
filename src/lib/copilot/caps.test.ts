@@ -165,14 +165,16 @@ describe("xAI rate defaults", () => {
       inputUsdPerMillion: 1,
       outputUsdPerMillion: 2,
     });
-    expect(ratesFromEnv("xai", {})).toEqual(DEFAULT_XAI_RATES);
+    expect(ratesFromEnv({})).toEqual(DEFAULT_XAI_RATES);
   });
 });
 
 describe("model routing", () => {
-  it("uses grok-build-0.1 for heavy jobs and gpt-oss-120b for small ones", () => {
+  it("uses grok-build-0.1 for heavy and small jobs", () => {
     expect(selectModel("heavy").model).toBe("grok-build-0.1");
-    expect(selectModel("small").model).toBe("openai/gpt-oss-120b");
+    expect(selectModel("heavy").provider).toBe("xai");
+    expect(selectModel("small").model).toBe("grok-build-0.1");
+    expect(selectModel("small").provider).toBe("xai");
     expect(selectModel("heavy", { XAI_HEAVY_MODEL: "grok-4.7" }).model).toBe(
       "grok-4.7",
     );

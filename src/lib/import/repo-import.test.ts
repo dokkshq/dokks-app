@@ -14,11 +14,16 @@ function store(overrides: Partial<ImportStore> = {}): ImportStore {
       name: "docs",
       fullName: "ada/docs",
       siteId: null,
+      siteSubdomain: null,
       archived: false,
       removed: false,
     })),
     subdomainTaken: vi.fn(async () => false),
-    createSiteAndJob: vi.fn(async () => ({ siteId: "site_1", jobId: "job_1" })),
+    createSiteAndJob: vi.fn(async () => ({
+      siteId: "site_1",
+      jobId: "job_1",
+      subdomain: "ada-docs",
+    })),
     ...overrides,
   };
 }
@@ -45,7 +50,12 @@ describe("repo import", () => {
   it("creates one pending site and one first-build job with the chosen fields", async () => {
     const mock = store();
     const result = await importRepo(mock, input());
-    expect(result).toEqual({ status: "imported", siteId: "site_1", jobId: "job_1" });
+    expect(result).toEqual({
+      status: "imported",
+      siteId: "site_1",
+      jobId: "job_1",
+      subdomain: "ada-docs",
+    });
     expect(mock.createSiteAndJob).toHaveBeenCalledWith({
       repoId: "repo_1",
       userId: "user_1",
@@ -91,6 +101,7 @@ describe("repo import", () => {
         name: "docs",
         fullName: "ada/docs",
         siteId: "site_existing",
+        siteSubdomain: "existing",
         archived: false,
         removed: false,
       }),
@@ -99,6 +110,7 @@ describe("repo import", () => {
     await expect(importRepo(mock, input())).resolves.toEqual({
       status: "already-imported",
       siteId: "site_existing",
+      subdomain: "existing",
     });
     expect(create).not.toHaveBeenCalled();
   });
@@ -120,6 +132,7 @@ describe("repo import", () => {
         name: "docs",
         fullName: "ada/docs",
         siteId: null,
+        siteSubdomain: null,
         archived: true,
         removed: false,
       }),

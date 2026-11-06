@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { getViewSession } from "@/lib/admin/act-as";
+import { productName } from "@/lib/brand";
 import { docsRootDomain, githubAppInstallUrl } from "@/lib/config";
 import { IMPORT_PAGE_SIZE, loadImportView } from "@/lib/import/queries";
 
@@ -44,7 +45,15 @@ export default async function ImportPage({
 
   return (
     <>
-      <PageHeader title="Import repo" />
+      <PageHeader
+        title="Import repo"
+        description="Creates a workspace and starts the first build. Prefer New workspace when you want to name the site first, then attach a repo inside chat."
+        action={
+          <Button nativeButton={false} variant="outline" render={<Link href="/dashboard/new" />}>
+            New workspace
+          </Button>
+        }
+      />
 
       {!view.connected ? (
         <Alert>
@@ -58,11 +67,11 @@ export default async function ImportPage({
           <EmptyHeader>
             <EmptyTitle>No GitHub accounts connected</EmptyTitle>
             <EmptyDescription>
-              Install Opentip Copilot on a personal or organization account, then return here.
+              Install {productName()} on a personal or organization account, then return here.
             </EmptyDescription>
           </EmptyHeader>
           <Button nativeButton={false} render={<a href={installUrl} />}>
-            Install Opentip Copilot
+            Install {productName()}
           </Button>
         </Empty>
       ) : (

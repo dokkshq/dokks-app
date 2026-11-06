@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { extractFacts } from "@/lib/copilot/facts";
-import { factualPageContent, mergePagePlan, planPagesFromFacts } from "@/lib/copilot/page-plan";
+import { factualPageContent, mergePagePlan, planPagesFromFacts, productCritique } from "@/lib/copilot/page-plan";
+import { buildProductModel } from "@/lib/copilot/product-model";
+import { extractProductSurface } from "@/lib/copilot/product-surface";
 
 const treePaths = [
   "README.md",
@@ -112,5 +114,33 @@ describe("page plan", () => {
     expect(body.content).toContain("DATABASE_URL");
     expect(body.content).toContain("npm run dev");
     expect(body.content).toContain("<!-- sources:");
+  });
+
+  it("plans a hosted app around screens and does not dump internal routes", () => {
+    const treePaths = ["package.json", "README.md", "src/app/gigs/page.tsx", "src/app/api/gigs/route.ts"];
+    const files = [
+      { path: "package.json", truncated: false, content: JSON.stringify({ name: "plugr", description: "Students find gigs." }) },
+      { path: "README.md", truncated: false, content: "# Plugr\n\nStudents find gigs.\n" },
+      {
+        path: "src/app/gigs/page.tsx",
+        truncated: false,
+        content: "<h1>Find a gig</h1><Button>Post a gig</Button>",
+      },
+      routeFile("src/app/api/gigs/route.ts", "POST"),
+    ];
+    const facts = extractFacts({ treePaths, files });
+    const surface = extractProductSurface({ treePaths, files }, facts);
+    const model = buildProductModel(surface, facts);
+    const plan = planPagesFromFacts({ facts, treePaths, files, model });
+    expect(surface.kind).toBe("hosted-app");
+    expect(model.reader).toBe("user");
+    expect(plan.map((page) => page.slug)).toContain("find-a-gig");
+    expect(plan.some((page) => page.slug.startsWith("api-reference"))).toBe(false);
+    const guide = plan.find((page) => page.slug === "find-a-gig");
+    expect(guide?.reader).toBe("user");
+    expect(factualPageContent(guide!, facts, "ada/plugr").content).not.toContain("git clone");
+    expect(productCritique("Clone it.\n\n```bash\ngit clone https://github.com/ada/plugr.git\n```", guide!, model)).toContain(
+      "Tells a product user to clone the repository.",
+    );
   });
 });

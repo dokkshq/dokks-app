@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { MARK_WHITE_ON_BLACK, productName } from "@/lib/brand";
 import { appUrl } from "@/lib/config";
 import "./globals.css";
 
@@ -18,10 +19,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl()),
   title: {
-    default: "Opentip",
-    template: "%s · Opentip",
+    default: productName(),
+    template: `%s · ${productName()}`,
   },
   description: "Hosted docs and a Changelog for GitHub repos.",
+  icons: {
+    icon: [{ url: MARK_WHITE_ON_BLACK, type: "image/png" }],
+    apple: [{ url: MARK_WHITE_ON_BLACK, type: "image/png" }],
+  },
   openGraph: {
     description: "Hosted docs and a Changelog for GitHub repos.",
   },

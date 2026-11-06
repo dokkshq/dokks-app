@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { saveWorkspaceAction } from "@/app/(product)/dashboard/w/[site]/actions";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { getViewSession } from "@/lib/admin/act-as";
 import { loadWorkspace } from "@/lib/workspace/load";
@@ -21,21 +23,21 @@ export default async function MoneySection({ params }: { params: Promise<{ site:
         <input type="hidden" name="section" value="/money" />
         <label className="flex items-center justify-between text-sm">
           Tip button
-          <input type="checkbox" name="tipButton" defaultChecked={site.tipButton} className="size-4 accent-meter" />
+          <Checkbox name="tipButton" defaultChecked={site.tipButton} />
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex items-center justify-between rounded-control border border-border px-3 py-2 text-sm">
             ETH
-            <input type="checkbox" name="tipEth" defaultChecked={site.tipEth} className="size-4 accent-meter" />
+            <Checkbox name="tipEth" defaultChecked={site.tipEth} />
           </label>
           <label className="flex items-center justify-between rounded-control border border-border px-3 py-2 text-sm">
             USDC
-            <input type="checkbox" name="tipUsdc" defaultChecked={site.tipUsdc} className="size-4 accent-meter" />
+            <Checkbox name="tipUsdc" defaultChecked={site.tipUsdc} />
           </label>
         </div>
         <label className="flex flex-col gap-1 text-sm">
           Payout wallet
-          <input name="payoutWallet" defaultValue={site.payoutWallet ?? ""} className="h-9 rounded-control border border-border bg-background px-3 text-sm" />
+          <Input name="payoutWallet" defaultValue={site.payoutWallet ?? ""} />
         </label>
         <SubmitButton className="w-fit">Save</SubmitButton>
       </form>

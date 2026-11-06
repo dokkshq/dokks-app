@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getViewSession } from "@/lib/admin/act-as";
-import { logActivity } from "@/lib/admin/activity";
 import { blockActAsWrites } from "@/lib/admin/guard";
 import { DEFAULT_SMALL_MODEL, selectModel, taskSizeForJob } from "@/lib/copilot/models";
 import { assertCredits } from "@/lib/credits/apply";
@@ -13,7 +12,7 @@ import {
   approveRevision,
   rejectRevision,
 } from "@/lib/sites/publish";
-import { retryFailedJob } from "@/worker/queue";
+import { retryWorkspaceBuild } from "@/lib/workspace/retry-build";
 
 export async function approveRevisionAction(formData: FormData) {
   const session = await getViewSession();
@@ -66,74 +65,16 @@ export async function rejectRevisionAction(formData: FormData) {
 export async function retryBuildAction(formData: FormData) {
   const siteId = String(formData.get("siteId") ?? "");
   const jobId = String(formData.get("jobId") ?? "");
-  if (!siteId || !jobId) redirect("/dashboard/sites");
-  const sitePath = `/dashboard/sites/${encodeURIComponent(siteId)}`;
-  const buildPath = `${sitePath}/builds/${encodeURIComponent(jobId)}`;
+  if (!siteId || !jobId) redirect("/dashboard");
   const session = await getViewSession();
-  if (!session) redirect(`/login?next=${encodeURIComponent(buildPath)}`);
+  if (!session) redirect(`/login?next=/dashboard/sites/${encodeURIComponent(siteId)}`);
   await blockActAsWrites();
-  const prisma = getPrisma();
-  if (!prisma) {
-    return redirectWithToast(
-      `${sitePath}?error=${encodeURIComponent("The database is not connected.")}`,
-      "error",
-      "The database is not connected.",
-    );
-  }
-  const job = await prisma.job.findFirst({
-    where: {
-      id: jobId,
-      repo: { site: { id: siteId, ownerId: session.userId } },
-    },
-    select: {
-      id: true,
-      kind: true,
-      repoId: true,
-      status: true,
-      repo: { select: { site: { select: { status: true } } } },
-    },
-  });
-  if (!job) {
-    return redirectWithToast(sitePath, "error", "That build no longer exists.");
-  }
-  if (job.repo.site?.status === "PAUSED") {
-    return redirectWithToast(`${buildPath}?retryError=paused`, "error", "This site is paused.");
-  }
-  const credits = await assertCredits(session.userId);
-  if (!credits.ok) {
-    return redirectWithToast(`${buildPath}?retryError=credits`, "error", credits.error);
-  }
-  if (job.status !== "FAILED") {
-    return redirectWithToast(
-      `${buildPath}?retryError=not-failed`,
-      "error",
-      "Only failed builds can be retried.",
-    );
-  }
-  const retried = await retryFailedJob(job.id).catch(() => false);
-  if (!retried) {
-    return redirectWithToast(
-      `${buildPath}?retryError=queue`,
-      "error",
-      "Could not queue that build. Try again.",
-    );
-  }
-  await logActivity({
-    actorId: session.userId,
-    actorEmail: session.login,
-    action: "site.job-retry",
-    targetType: "job",
-    targetId: job.id,
-    metadata: {
-      kind: job.kind,
-      repoId: job.repoId,
-      siteId,
-    },
-  });
-  revalidatePath(buildPath);
-  revalidatePath(sitePath);
-  revalidatePath("/dashboard/sites");
-  return redirectWithToast(`${buildPath}?retried=1`, "success", "Build queued again.");
+  const result = await retryWorkspaceBuild({ session, siteId, jobId });
+  const destination = result.subdomain
+    ? `/dashboard/w/${result.subdomain}/builds`
+    : "/dashboard";
+  if (!result.ok) return redirectWithToast(destination, "error", result.error);
+  return redirectWithToast(destination, "success", "Build queued again.");
 }
 
 export async function setReviewModeAction(formData: FormData) {
@@ -208,6 +149,13 @@ export async function refreshSummaryAction(formData: FormData) {
       "This site is paused.",
     );
   }
+  if (!site.repoId) {
+    return redirectWithToast(
+      `/dashboard/sites/${siteId}?error=${encodeURIComponent("Import a repository first.")}`,
+      "error",
+      "Import a repository first.",
+    );
+  }
   const credits = await assertCredits(session.userId);
   if (!credits.ok) {
     return redirectWithToast(
@@ -236,7 +184,7 @@ export async function refreshSummaryAction(formData: FormData) {
       repoId: site.repoId,
       kind: "SUMMARY_REFRESH",
       status: "QUEUED",
-      provider: "GROQ",
+      provider: "XAI",
       model: DEFAULT_SMALL_MODEL,
       idempotencyKey: `summary:${site.repoId}:${Date.now()}`,
     },
@@ -298,6 +246,13 @@ export async function sendChatEditAction(formData: FormData) {
       "This site is paused.",
     );
   }
+  if (!site.repoId) {
+    return redirectWithToast(
+      `${backTo}&error=${encodeURIComponent("Import a repository before chatting.")}`,
+      "error",
+      "Import a repository before chatting.",
+    );
+  }
   const credits = await assertCredits(session.userId);
   if (!credits.ok) {
     return redirectWithToast(
@@ -325,7 +280,7 @@ export async function sendChatEditAction(formData: FormData) {
   const task = taskSizeForJob("CHAT_EDIT", instruction);
   const choice = selectModel(task, {
     XAI_HEAVY_MODEL: process.env.XAI_HEAVY_MODEL,
-    GROQ_SMALL_MODEL: process.env.GROQ_SMALL_MODEL,
+    XAI_SMALL_MODEL: process.env.XAI_SMALL_MODEL,
   });
   const job = await prisma.$transaction(async (tx) => {
     const chat = await tx.chatEdit.create({
@@ -342,7 +297,7 @@ export async function sendChatEditAction(formData: FormData) {
         repoId: site.repoId,
         kind: "CHAT_EDIT",
         status: "QUEUED",
-        provider: choice.provider === "xai" ? "XAI" : "GROQ",
+        provider: "XAI",
         model: choice.model,
         idempotencyKey: `chat:${chat.id}`,
       },

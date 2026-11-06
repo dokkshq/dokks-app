@@ -1,3 +1,5 @@
+import { GithubRateLimitError } from "@/lib/github/api-error";
+
 export class PermanentJobError extends Error {
   constructor(message: string) {
     super(message);
@@ -23,6 +25,9 @@ export function classifyJobError(error: unknown): {
     return { message: error.message, permanent: false };
   }
   const message = safeErrorMessage(error);
+  if (error instanceof GithubRateLimitError) {
+    return { message, permanent: false };
+  }
   if (
     error instanceof Error &&
     (error.name === "ProviderNotConfiguredError" ||

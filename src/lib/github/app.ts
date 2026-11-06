@@ -1,4 +1,5 @@
 import { createSign, randomBytes } from "node:crypto";
+import { productName } from "@/lib/brand";
 import { appUrl } from "@/lib/config";
 
 export function readGithubPrivateKey(
@@ -115,7 +116,7 @@ export async function exchangeGithubCode(code: string): Promise<GithubAuthorizat
 export function githubApiHeaders(token: string): HeadersInit {
   const headers: Record<string, string> = {
     accept: "application/vnd.github+json",
-    "user-agent": "Opentip Copilot",
+    "user-agent": productName(),
     "x-github-api-version": "2022-11-28",
   };
   if (token) headers.authorization = `Bearer ${token}`;

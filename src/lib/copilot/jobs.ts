@@ -34,7 +34,7 @@ export async function prepareCopilotJob(args: {
   const env = args.env ?? process.env;
   const choice = selectModel(args.task, env);
   const provider = args.provider ?? resolveProvider(args.task, env);
-  const rates = ratesFromEnv(choice.provider, env);
+  const rates = ratesFromEnv(env);
   const estimateUsd = estimateCostUsd(reserveTokens(args.task), rates);
   const decision = args.ledger.tryReserve({
     repoId: args.repoId,

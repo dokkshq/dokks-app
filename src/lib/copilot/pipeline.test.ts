@@ -49,13 +49,16 @@ describe("docs pipeline", () => {
   it("stubs a page that still invents a route after rewrite, and drops a missing nav link", async () => {
     const facts = extractFacts(snapshot);
     const model = provider((request) => {
-      if (request.system.includes("OPENTIP_STAGE:map")) {
-        return JSON.stringify({ audience: "app", summary: "Student marketplace", modules: [] });
+      if (request.system.includes("DOCS_STAGE:model")) {
+        return JSON.stringify({ promise: "Student marketplace", jobs: [], nouns: [] });
       }
-      if (request.system.includes("OPENTIP_STAGE:plan")) {
+      if (request.system.includes("DOCS_STAGE:critique")) {
+        return JSON.stringify({ pass: true, reasons: [] });
+      }
+      if (request.system.includes("DOCS_STAGE:plan")) {
         return JSON.stringify({ pages: [] });
       }
-      if (request.system.includes("OPENTIP_STAGE:rewrite")) {
+      if (request.system.includes("DOCS_STAGE:rewrite")) {
         return JSON.stringify({
           title: "API reference",
           description: "Routes",
@@ -100,14 +103,14 @@ describe("docs pipeline", () => {
     expect(result.pages.map((page) => page.slug)).toEqual(
       expect.arrayContaining(["", "getting-started", "configuration", "api-reference"]),
     );
-    expect(result.usage.stages.map((stage) => stage.stage)).toContain("map");
+    expect(result.usage.stages.map((stage) => stage.stage)).toContain("model");
     expect(result.usage.promptTokens).toBeGreaterThan(0);
   });
 
   it("plans a chat edit across more than one page", async () => {
     const facts = extractFacts(snapshot);
     const model = provider((request) => {
-      if (request.system.includes("OPENTIP_STAGE:chat-plan")) {
+      if (request.system.includes("DOCS_STAGE:chat-plan")) {
         return JSON.stringify({ slugs: ["", "getting-started"], note: "Both mention setup." });
       }
       return JSON.stringify({

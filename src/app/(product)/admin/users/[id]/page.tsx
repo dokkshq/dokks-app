@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getPrisma } from "@/lib/db";
@@ -112,8 +113,8 @@ export default async function AdminUserPage({
             <p className="text-sm">{user.creditBalance} credits</p>
             <form action={addCredits} className="flex flex-col gap-2">
               <input type="hidden" name="userId" value={user.id} />
-              <input name="amount" type="number" min="1" required placeholder="Credits" className="h-9 rounded-control border border-border bg-background px-3 text-sm" />
-              <input name="reason" required placeholder="Reason" className="h-9 rounded-control border border-border bg-background px-3 text-sm" />
+              <Input name="amount" type="text" inputMode="numeric" required placeholder="Credits" />
+              <Input name="reason" required placeholder="Reason" />
               <div className="flex gap-2">
                 <SubmitButton name="mode" value="grant" size="sm">
                   Grant

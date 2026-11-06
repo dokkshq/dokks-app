@@ -3,6 +3,7 @@ import { DocsChrome } from "@/components/docs/docs-chrome";
 import { extractHeadings } from "@/components/docs/highlight";
 import { DocsMarkdown } from "@/components/docs/markdown";
 import { getViewSession } from "@/lib/admin/act-as";
+import { publicAssetUrl } from "@/lib/media/public-url";
 import { markDraft } from "@/lib/workspace/draft";
 import { loadWorkspace } from "@/lib/workspace/load";
 
@@ -50,8 +51,8 @@ export default async function DraftPreviewPage({
       theme={site.theme}
       appearance={site.appearance}
       primaryColor={site.primaryColor}
-      logoLightUrl={site.logoLightUrl}
-      logoDarkUrl={site.logoDarkUrl}
+      logoLightUrl={publicAssetUrl(site.logoLightUrl)}
+      logoDarkUrl={publicAssetUrl(site.logoDarkUrl)}
       logoHref={site.logoHref}
       items={items}
       searchItems={items.map((item) => ({ ...item, text: item.title }))}

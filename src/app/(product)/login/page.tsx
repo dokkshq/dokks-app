@@ -1,4 +1,5 @@
 import { AuthScreen } from "@/components/auth/auth-screen";
+import { productName } from "@/lib/brand";
 import { redirectAuthenticatedEntry } from "@/lib/auth/entry";
 import { safeRelativePath } from "@/lib/auth/gate";
 import { authErrors, installNotice } from "@/lib/auth/messages";
@@ -19,12 +20,12 @@ export default async function LoginPage({
   const suffix = query.size ? `?${query.toString()}` : "";
   return (
     <AuthScreen
-      title="Log in to Opentip"
+      title={`Log in to ${productName()}`}
       subtitle=""
       githubHref={`/api/auth/github${suffix}`}
       returnTo="login"
       nextPath={next}
-      alternate={{ href: `/sign-up${suffix}`, prompt: "New to Opentip?", label: "Sign up" }}
+      alternate={{ href: `/sign-up${suffix}`, prompt: `New to ${productName()}?`, label: "Sign up" }}
       error={params.error ? (authErrors[params.error] ?? null) : null}
       notice={params.from === "install" ? installNotice : null}
     />

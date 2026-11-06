@@ -1,3 +1,4 @@
+import { productName } from "@/lib/brand";
 import { getPrisma, isUniqueConstraint } from "@/lib/db";
 import { sendOpsEmail } from "@/lib/email/resend";
 import {
@@ -65,7 +66,7 @@ export async function runSpendAlerts(now = new Date()): Promise<SpendCheckResult
     if (!exists) {
       const send = await safeSend(
         recipients,
-        `Opentip AI spend above $${thresholds.dailyUsd}`,
+        `${productName()} AI spend above $${thresholds.dailyUsd}`,
         `Estimated AI spend for ${dayKey(day)} is $${total.toFixed(2)}, above the daily threshold of $${thresholds.dailyUsd}.\n`,
       );
       if (send) {
@@ -97,7 +98,7 @@ export async function runSpendAlerts(now = new Date()): Promise<SpendCheckResult
     });
     const send = await safeSend(
       recipients,
-      `Opentip user spend outlier: ${user?.login ?? outlier.userId}`,
+      `${productName()} user spend outlier: ${user?.login ?? outlier.userId}`,
       `${user?.login ?? outlier.userId} used $${outlier.costUsd.toFixed(2)} in estimated AI spend on ${dayKey(day)}. Threshold is $${thresholds.userUsd} and ${thresholds.userMultiple}x the median.\n`,
     );
     if (send) {

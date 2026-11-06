@@ -3,6 +3,7 @@ import {
   githubApiHeaders,
   readGithubPrivateKey,
 } from "@/lib/github/app";
+import { githubApiError } from "@/lib/github/api-error";
 
 export class GithubAppConfigError extends Error {
   constructor(message: string) {
@@ -37,7 +38,7 @@ export async function createInstallationToken(args: {
     },
   );
   if (!response.ok) {
-    throw new Error(`GitHub installation token request failed (${response.status}).`);
+    throw githubApiError("GitHub installation token request", response);
   }
   const body = (await response.json()) as { token?: unknown; expires_at?: unknown };
   if (typeof body.token !== "string" || !body.token) {

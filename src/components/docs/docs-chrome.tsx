@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { Menu } from "lucide-react";
-import { BuiltWithOpentip } from "@/components/docs/built-with";
+import { BuiltWith } from "@/components/docs/built-with";
 import { DocsSearch, type DocsSearchItem } from "@/components/docs/search";
 import { Button } from "@/components/ui/button";
 import {
@@ -113,7 +113,13 @@ export function DocsChrome({
                 <DocsNav sections={sections} currentSlug={currentSlug} pendingSlugs={pendingSlugs} />
               </SheetContent>
             </Sheet>
-            <span className="text-sm">{name}</span>
+            {logo ? (
+              // Customer logos are arbitrary https URLs, so this stays a plain image.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logo} alt={`${name} logo`} className="h-7 w-auto max-w-[10rem] object-contain" />
+            ) : (
+              <span className="truncate text-sm">{name}</span>
+            )}
           </header>
           <div className="mx-auto flex w-full max-w-6xl items-start">
           <article
@@ -180,7 +186,7 @@ export function DocsChrome({
                 ) : null}
               </div>
             ) : null}
-            <BuiltWithOpentip placement="inline" />
+            <BuiltWith placement="inline" />
           </article>
           {headings.length > 0 ? (
             <aside className="sticky top-8 hidden w-52 shrink-0 self-start pr-6 xl:block">
@@ -192,7 +198,7 @@ export function DocsChrome({
           ) : null}
           </div>
         </div>
-        <BuiltWithOpentip />
+        <BuiltWith />
       </div>
     </div>
   );
@@ -210,7 +216,7 @@ function Brand({
   const mark = logo ? (
     // Customer logos are arbitrary https URLs, so this stays a plain image.
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={logo} alt={`${name} logo`} className="h-7 w-auto" />
+    <img src={logo} alt={`${name} logo`} className="h-7 w-auto max-w-[11rem] object-contain" />
   ) : (
     <span className="text-sm">{name}</span>
   );

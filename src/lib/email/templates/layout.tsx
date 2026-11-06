@@ -14,24 +14,29 @@ import {
   Text,
 } from "react-email";
 import {
-  MARKETING_URL,
-  OPENTIP_BACKGROUND,
-  OPENTIP_BLUE,
-  OPENTIP_HAIRLINE,
-  OPENTIP_INK,
-  OPENTIP_MUTED,
+  HAIRLINE,
+  INK,
+  MARK_EMAIL,
+  MUTED,
+  PAGE_BACKGROUND,
+  brandPrimary,
+  marketingUrl,
+  productName,
 } from "@/lib/brand";
+import { socialGithubUrl, socialXUrl } from "@/lib/config";
 
 const FONT_STACK =
   '"Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
 const MONO_STACK =
   '"Geist Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace';
 
-const textLinkStyle = {
-  color: OPENTIP_BLUE,
-  textDecoration: "underline",
-  textUnderlineOffset: "2px",
-} as const;
+function textLinkStyle() {
+  return {
+    color: brandPrimary(),
+    textDecoration: "underline" as const,
+    textUnderlineOffset: "2px",
+  };
+}
 
 export function EmailLayout({
   preview,
@@ -52,6 +57,10 @@ export function EmailLayout({
   };
 }) {
   const baseUrl = appUrl.replace(/\/$/, "");
+  const name = productName();
+  const marketing = marketingUrl();
+  const xUrl = socialXUrl();
+  const githubUrl = socialGithubUrl();
   return (
     <Html lang="en">
       <Head>
@@ -70,9 +79,9 @@ export function EmailLayout({
         style={{
           margin: 0,
           padding: 0,
-          backgroundColor: OPENTIP_BACKGROUND,
+          backgroundColor: PAGE_BACKGROUND,
           fontFamily: FONT_STACK,
-          color: OPENTIP_INK,
+          color: INK,
         }}
       >
         <Container
@@ -87,18 +96,18 @@ export function EmailLayout({
             className="email-card"
             style={{
               backgroundColor: "#FFFFFF",
-              border: `1px solid ${OPENTIP_HAIRLINE}`,
+              border: `1px solid ${HAIRLINE}`,
               borderRadius: "14px",
               padding: "32px",
             }}
           >
             <Section style={{ marginBottom: "32px" }}>
-              <Link href={baseUrl} style={{ textDecoration: "none", color: OPENTIP_INK }}>
+              <Link href={baseUrl} style={{ textDecoration: "none", color: INK }}>
                 <Img
-                  src={`${baseUrl}/brand/mark-blue.png`}
+                  src={`${baseUrl}${MARK_EMAIL}`}
                   width="32"
                   height="32"
-                  alt="Opentip"
+                  alt={name}
                   style={{
                     display: "inline-block",
                     verticalAlign: "middle",
@@ -115,7 +124,7 @@ export function EmailLayout({
                     letterSpacing: "-0.2px",
                   }}
                 >
-                  Opentip
+                  {name}
                 </span>
               </Link>
             </Section>
@@ -129,7 +138,7 @@ export function EmailLayout({
                 lineHeight: "34px",
                 fontWeight: 500,
                 letterSpacing: "-0.6px",
-                color: OPENTIP_INK,
+                color: INK,
               }}
             >
               {heading}
@@ -139,8 +148,8 @@ export function EmailLayout({
 
             <Hr
               style={{
-                borderColor: OPENTIP_HAIRLINE,
-                borderTop: `1px solid ${OPENTIP_HAIRLINE}`,
+                borderColor: HAIRLINE,
+                borderTop: `1px solid ${HAIRLINE}`,
                 margin: "32px 0 20px",
               }}
             />
@@ -149,7 +158,7 @@ export function EmailLayout({
                 margin: 0,
                 fontSize: "12px",
                 lineHeight: "19px",
-                color: OPENTIP_MUTED,
+                color: MUTED,
               }}
             >
               {reason}
@@ -162,7 +171,7 @@ export function EmailLayout({
                 margin: "0 0 6px",
                 fontSize: "12px",
                 lineHeight: "18px",
-                color: OPENTIP_MUTED,
+                color: MUTED,
               }}
             >
               Docs that write themselves from your code.
@@ -172,10 +181,10 @@ export function EmailLayout({
                 margin: "0 0 10px",
                 fontSize: "12px",
                 lineHeight: "18px",
-                color: OPENTIP_MUTED,
+                color: MUTED,
               }}
             >
-              <Link href={baseUrl} style={{ ...textLinkStyle, color: OPENTIP_MUTED }}>
+              <Link href={baseUrl} style={{ ...textLinkStyle(), color: MUTED }}>
                 {baseUrl.replace(/^https?:\/\//, "")}
               </Link>
             </Text>
@@ -184,54 +193,60 @@ export function EmailLayout({
                 margin: "0 0 8px",
                 fontSize: "12px",
                 lineHeight: "18px",
-                color: OPENTIP_MUTED,
+                color: MUTED,
               }}
             >
-              <Link href={`${MARKETING_URL}/terms`} style={{ ...textLinkStyle, color: OPENTIP_MUTED }}>
+              <Link href={`${marketing}/terms`} style={{ ...textLinkStyle(), color: MUTED }}>
                 Terms
               </Link>
               {"  ·  "}
-              <Link href={`${MARKETING_URL}/privacy`} style={{ ...textLinkStyle, color: OPENTIP_MUTED }}>
+              <Link href={`${marketing}/privacy`} style={{ ...textLinkStyle(), color: MUTED }}>
                 Privacy
               </Link>
               {"  ·  "}
               <Link
-                href={`${MARKETING_URL}/subprocessors`}
-                style={{ ...textLinkStyle, color: OPENTIP_MUTED }}
+                href={`${marketing}/subprocessors`}
+                style={{ ...textLinkStyle(), color: MUTED }}
               >
                 Subprocessors
               </Link>
             </Text>
-            <Text
-              style={{
-                margin: "0 0 8px",
-                fontSize: "12px",
-                lineHeight: "18px",
-                color: OPENTIP_MUTED,
-              }}
-            >
-              <Link href="https://x.com/opentip_tech" style={{ ...textLinkStyle, color: OPENTIP_MUTED }}>
-                X
-              </Link>
-              {"  ·  "}
-              <Link href="https://github.com/opentiphq" style={{ ...textLinkStyle, color: OPENTIP_MUTED }}>
-                GitHub
-              </Link>
-            </Text>
+            {xUrl || githubUrl ? (
+              <Text
+                style={{
+                  margin: "0 0 8px",
+                  fontSize: "12px",
+                  lineHeight: "18px",
+                  color: MUTED,
+                }}
+              >
+                {xUrl ? (
+                  <Link href={xUrl} style={{ ...textLinkStyle(), color: MUTED }}>
+                    X
+                  </Link>
+                ) : null}
+                {xUrl && githubUrl ? "  ·  " : null}
+                {githubUrl ? (
+                  <Link href={githubUrl} style={{ ...textLinkStyle(), color: MUTED }}>
+                    GitHub
+                  </Link>
+                ) : null}
+              </Text>
+            ) : null}
             {preferences ? (
               <Text
                 style={{
                   margin: "0 0 8px",
                   fontSize: "12px",
                   lineHeight: "18px",
-                  color: OPENTIP_MUTED,
+                  color: MUTED,
                 }}
               >
-                <Link href={preferences.manageUrl} style={{ ...textLinkStyle, color: OPENTIP_MUTED }}>
+                <Link href={preferences.manageUrl} style={{ ...textLinkStyle(), color: MUTED }}>
                   Email preferences
                 </Link>
                 {"  ·  "}
-                <Link href={preferences.unsubscribeUrl} style={{ ...textLinkStyle, color: OPENTIP_MUTED }}>
+                <Link href={preferences.unsubscribeUrl} style={{ ...textLinkStyle(), color: MUTED }}>
                   Unsubscribe
                 </Link>
               </Text>
@@ -241,10 +256,10 @@ export function EmailLayout({
                 margin: 0,
                 fontSize: "12px",
                 lineHeight: "18px",
-                color: OPENTIP_MUTED,
+                color: MUTED,
               }}
             >
-              © {new Date().getFullYear()} Opentip
+              © {new Date().getFullYear()} {name}
             </Text>
           </Section>
         </Container>
@@ -260,7 +275,7 @@ export function EmailParagraph({ children }: { children: ReactNode }) {
         margin: "0 0 16px",
         fontSize: "15px",
         lineHeight: "24px",
-        color: OPENTIP_INK,
+        color: INK,
       }}
     >
       {children}
@@ -275,7 +290,7 @@ export function EmailMuted({ children }: { children: ReactNode }) {
         margin: "0 0 16px",
         fontSize: "13px",
         lineHeight: "21px",
-        color: OPENTIP_MUTED,
+        color: MUTED,
       }}
     >
       {children}
@@ -292,7 +307,7 @@ export function EmailButton({ href, label }: { href: string; label: string }) {
           className="email-button"
           style={{
             display: "inline-block",
-            backgroundColor: OPENTIP_BLUE,
+            backgroundColor: brandPrimary(),
             color: "#FFFFFF",
             fontSize: "14px",
             fontWeight: 500,
@@ -311,13 +326,13 @@ export function EmailButton({ href, label }: { href: string; label: string }) {
           margin: "0 0 16px",
           fontSize: "12px",
           lineHeight: "19px",
-          color: OPENTIP_MUTED,
+          color: MUTED,
           wordBreak: "break-all",
         }}
       >
         Button not working? Paste this into your browser:
         <br />
-        <Link href={href} style={textLinkStyle}>
+        <Link href={href} style={textLinkStyle()}>
           {href}
         </Link>
       </Text>
@@ -330,7 +345,7 @@ export function EmailCode({ code }: { code: string }) {
     <Section
       style={{
         backgroundColor: "#F7F7FF",
-        border: `1px solid ${OPENTIP_HAIRLINE}`,
+        border: `1px solid ${HAIRLINE}`,
         borderRadius: "12px",
         margin: "24px 0 18px",
         padding: "22px 16px",
@@ -345,7 +360,7 @@ export function EmailCode({ code }: { code: string }) {
           lineHeight: "40px",
           fontWeight: 500,
           letterSpacing: "7px",
-          color: OPENTIP_INK,
+          color: INK,
         }}
       >
         {code}

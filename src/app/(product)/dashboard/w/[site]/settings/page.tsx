@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { deleteWorkspaceAction, saveWorkspaceAction } from "@/app/(product)/dashboard/w/[site]/actions";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Radio, RadioGroup } from "@/components/ui/radio-group";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { getViewSession } from "@/lib/admin/act-as";
 import { loadWorkspace } from "@/lib/workspace/load";
@@ -21,33 +23,33 @@ export default async function SettingsSection({ params }: { params: Promise<{ si
         <input type="hidden" name="section" value="/settings" />
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm">Visibility</p>
-          <div className="flex gap-2 text-sm">
-            <label className="flex items-center gap-1">
-              <input type="radio" name="privateSite" value="" defaultChecked={!site.privateSite} />
+          <RadioGroup name="privateSite" defaultValue={site.privateSite ? "on" : "off"} className="flex gap-3 text-sm">
+            <label className="flex items-center gap-2">
+              <Radio value="off" />
               Public
             </label>
-            <label className="flex items-center gap-1">
-              <input type="radio" name="privateSite" value="on" defaultChecked={site.privateSite} />
+            <label className="flex items-center gap-2">
+              <Radio value="on" />
               Private
             </label>
-          </div>
+          </RadioGroup>
         </div>
         <label className="flex items-center justify-between text-sm">
           Hide previews from search
-          <input type="checkbox" name="previewNoindex" defaultChecked={site.previewNoindex} className="size-4 accent-meter" />
+          <Checkbox name="previewNoindex" defaultChecked={site.previewNoindex} />
         </label>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm">Publishing</p>
-          <div className="flex gap-2 text-sm">
-            <label className="flex items-center gap-1">
-              <input type="radio" name="reviewMode" value="AUTO_PUBLISH" defaultChecked={site.reviewMode === "AUTO_PUBLISH"} />
+          <RadioGroup name="reviewMode" defaultValue={site.reviewMode} className="flex gap-3 text-sm">
+            <label className="flex items-center gap-2">
+              <Radio value="AUTO_PUBLISH" />
               Auto-publish
             </label>
-            <label className="flex items-center gap-1">
-              <input type="radio" name="reviewMode" value="REVIEW" defaultChecked={site.reviewMode === "REVIEW"} />
+            <label className="flex items-center gap-2">
+              <Radio value="REVIEW" />
               Review first
             </label>
-          </div>
+          </RadioGroup>
         </div>
         <div className="flex items-center justify-between text-sm">
           <span>Repository</span>

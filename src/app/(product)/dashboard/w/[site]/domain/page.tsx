@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { saveWorkspaceAction } from "@/app/(product)/dashboard/w/[site]/actions";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { getViewSession } from "@/lib/admin/act-as";
+import { productName } from "@/lib/brand";
 import { docsRootDomain } from "@/lib/config";
 import { loadWorkspace } from "@/lib/workspace/load";
 
@@ -23,7 +24,7 @@ export default async function DomainSection({ params }: { params: Promise<{ site
         <input type="hidden" name="subdomain" value={site.subdomain} />
         <input type="hidden" name="section" value="/domain" />
         <div className="flex items-center justify-between">
-          <p className="text-sm">Opentip subdomain</p>
+          <p className="text-sm">{productName()} subdomain</p>
           <span className="text-xs text-emerald-500">Active</span>
         </div>
         <div className="flex gap-2">

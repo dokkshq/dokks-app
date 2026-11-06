@@ -72,13 +72,11 @@ az containerapp create \
     database-url="$DATABASE_URL" \
     github-app-private-key="$GITHUB_APP_PRIVATE_KEY" \
     xai-api-key="$XAI_API_KEY" \
-    groq-api-key="$GROQ_API_KEY" \
   --env-vars \
     DATABASE_URL=secretref:database-url \
     GITHUB_APP_ID="$GITHUB_APP_ID" \
     GITHUB_APP_PRIVATE_KEY=secretref:github-app-private-key \
     XAI_API_KEY=secretref:xai-api-key \
-    GROQ_API_KEY=secretref:groq-api-key \
     NODE_ENV=production \
     WORKER_CONCURRENCY=2 \
     MAX_CONCURRENT_HEAVY=1 \
@@ -98,7 +96,6 @@ Azure Container Apps KEDA metadata uses the PostgreSQL scaler key names for your
 - `GITHUB_APP_ID`
 - `GITHUB_APP_PRIVATE_KEY`
 - `XAI_API_KEY`
-- `GROQ_API_KEY`
 - `REPO_DAILY_CAP_USD`
 - `GLOBAL_DAILY_CAP_USD`
 - `WORKER_CONCURRENCY`

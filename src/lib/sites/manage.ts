@@ -92,25 +92,27 @@ export async function loadManagedSite(
     },
   });
   if (!site) return null;
-  const recentJobs = await prisma.job.findMany({
-    where: { repoId: site.repo.id },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-    select: {
-      id: true,
-      kind: true,
-      status: true,
-      phase: true,
-      progress: true,
-      detail: true,
-      error: true,
-      attempts: true,
-      maxAttempts: true,
-      createdAt: true,
-      startedAt: true,
-      finishedAt: true,
-    },
-  });
+  const recentJobs = site.repo
+    ? await prisma.job.findMany({
+        where: { repoId: site.repo.id },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          kind: true,
+          status: true,
+          phase: true,
+          progress: true,
+          detail: true,
+          error: true,
+          attempts: true,
+          maxAttempts: true,
+          createdAt: true,
+          startedAt: true,
+          finishedAt: true,
+        },
+      })
+    : [];
   return {
     id: site.id,
     name: site.name,
@@ -286,7 +288,7 @@ export async function loadChatView(
   return {
     id: site.id,
     name: site.name,
-    repoFullName: site.repo.fullName,
+    repoFullName: site.repo?.fullName ?? "No repository",
     pages: site.pages,
     selected,
     history: site.chatEdits.map((edit) => ({

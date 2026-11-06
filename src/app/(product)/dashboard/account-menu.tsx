@@ -12,17 +12,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ImportAccount } from "@/lib/import/queries";
+import type { ImportAccount } from "@/lib/import/types";
 import { initialsFor } from "@/lib/profile/avatar";
+
+function accountHref(basePath: string, accountId: string): string {
+  const url = new URL(basePath, "https://opentip.local");
+  if (basePath.startsWith("/dashboard/w/")) {
+    url.searchParams.set("import", "1");
+  }
+  url.searchParams.set("account", accountId);
+  return `${url.pathname}${url.search}`;
+}
 
 export function ImportAccountMenu({
   accounts,
   selectedId,
   installUrl,
+  basePath = "/dashboard/import",
 }: {
   accounts: ImportAccount[];
   selectedId: string | null;
   installUrl: string;
+  basePath?: string;
 }) {
   const selected = accounts.find((account) => account.id === selectedId) ?? null;
   return (
@@ -65,7 +76,7 @@ export function ImportAccountMenu({
               key={account.id}
               render={
                 <Link
-                  href={`/dashboard?account=${encodeURIComponent(account.id)}`}
+                  href={accountHref(basePath, account.id)}
                   className="flex items-center gap-3"
                 />
               }

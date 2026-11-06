@@ -3,7 +3,7 @@ import { LowBalanceBanner } from "@/components/credits/low-balance";
 import { WorkspaceShell } from "@/components/workspace/shell";
 import { getViewSession } from "@/lib/admin/act-as";
 import { loadCurrentUser } from "@/lib/profile/user";
-import { loadWorkspace, loadWorkspaces } from "@/lib/workspace/load";
+import { loadWorkspaceShell, loadWorkspaces } from "@/lib/workspace/load";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ export default async function WorkspaceLayout({
   if (!session) redirect("/login?next=/dashboard");
   const { site: subdomain } = await params;
   const [site, sites, user] = await Promise.all([
-    loadWorkspace(session, subdomain),
+    loadWorkspaceShell(session, subdomain),
     loadWorkspaces(session),
     loadCurrentUser(session),
   ]);
@@ -29,14 +29,19 @@ export default async function WorkspaceLayout({
       site={{
         subdomain: site.subdomain,
         name: site.name,
-        owner: site.repoOwner,
-        repo: site.repoName,
-        host: site.publicHost,
+        owner: site.owner,
+        repo: site.repo,
+        host: site.host,
         status: site.status,
         reviewMode: site.reviewMode,
+        hasRepo: site.hasRepo,
       }}
-      sites={sites.map((item) => ({ subdomain: item.subdomain, owner: item.owner, name: item.name }))}
-      counts={{ pages: site.pages.length, changelog: site.changelog.length }}
+      sites={sites.map((item) => ({
+        subdomain: item.subdomain,
+        owner: item.hasRepo ? item.owner : item.name,
+        name: item.name,
+      }))}
+      counts={{ pages: site.pages, changelog: site.changelog }}
       banner={<LowBalanceBanner userId={session.userId} />}
     >
       {children}

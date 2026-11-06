@@ -1,9 +1,9 @@
 export const DEFAULT_HEAVY_MODEL = "grok-build-0.1";
 export const HEAVY_MODEL_CONFIG_OPTION = "grok-4.7";
-export const DEFAULT_SMALL_MODEL = "openai/gpt-oss-120b";
+export const DEFAULT_SMALL_MODEL = "grok-build-0.1";
 
 export type TaskSize = "heavy" | "small";
-export type ProviderId = "xai" | "groq" | "fake";
+export type ProviderId = "xai" | "fake";
 export type CopilotJobKind =
   | "FIRST_BUILD"
   | "PUSH_UPDATE"
@@ -11,14 +11,14 @@ export type CopilotJobKind =
   | "SUMMARY_REFRESH";
 
 export type ModelChoice = {
-  provider: "xai" | "groq";
+  provider: "xai";
   model: string;
   task: TaskSize;
 };
 
 export function selectModel(
   task: TaskSize,
-  env: { XAI_HEAVY_MODEL?: string; GROQ_SMALL_MODEL?: string } = {},
+  env: { XAI_HEAVY_MODEL?: string; XAI_SMALL_MODEL?: string } = {},
 ): ModelChoice {
   if (task === "heavy") {
     return {
@@ -28,8 +28,8 @@ export function selectModel(
     };
   }
   return {
-    provider: "groq",
-    model: env.GROQ_SMALL_MODEL?.trim() || DEFAULT_SMALL_MODEL,
+    provider: "xai",
+    model: env.XAI_SMALL_MODEL?.trim() || DEFAULT_SMALL_MODEL,
     task,
   };
 }

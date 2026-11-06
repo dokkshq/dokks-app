@@ -11,6 +11,7 @@ export type ImportRepoRow = {
   name: string;
   fullName: string;
   siteId: string | null;
+  siteSubdomain: string | null;
   archived: boolean;
   removed: boolean;
 };
@@ -39,12 +40,12 @@ export type ImportStore = {
     primaryColor: string;
     reviewMode: ImportReviewMode;
     idempotencyKey: string;
-  }): Promise<{ siteId: string; jobId: string }>;
+  }): Promise<{ siteId: string; jobId: string; subdomain: string }>;
 };
 
 export type ImportResult =
-  | { status: "imported"; siteId: string; jobId: string }
-  | { status: "already-imported"; siteId: string }
+  | { status: "imported"; siteId: string; jobId: string; subdomain: string }
+  | { status: "already-imported"; siteId: string; subdomain?: string }
   | { status: "not-found" }
   | { status: "unavailable" }
   | { status: "subdomain-taken" }
@@ -119,7 +120,13 @@ export async function importRepo(
 ): Promise<ImportResult> {
   const repo = await store.findRepoForUser(args.repoId, args.userId);
   if (!repo) return { status: "not-found" };
-  if (repo.siteId) return { status: "already-imported", siteId: repo.siteId };
+  if (repo.siteId) {
+    return {
+      status: "already-imported",
+      siteId: repo.siteId,
+      subdomain: repo.siteSubdomain ?? undefined,
+    };
+  }
   if (repo.archived || repo.removed) return { status: "unavailable" };
 
   const validated = validateImport(args);
@@ -144,7 +151,13 @@ export async function importRepo(
     return { status: "imported", ...created };
   } catch (error) {
     const again = await store.findRepoForUser(args.repoId, args.userId);
-    if (again?.siteId) return { status: "already-imported", siteId: again.siteId };
+    if (again?.siteId) {
+      return {
+        status: "already-imported",
+        siteId: again.siteId,
+        subdomain: again.siteSubdomain ?? undefined,
+      };
+    }
     if (await store.subdomainTaken(validated.subdomain)) {
       return { status: "subdomain-taken" };
     }

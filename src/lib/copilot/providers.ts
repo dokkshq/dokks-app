@@ -28,12 +28,8 @@ export interface CopilotProvider {
 }
 
 export class ProviderNotConfiguredError extends Error {
-  constructor(provider: "xai" | "groq") {
-    super(
-      provider === "xai"
-        ? "XAI_API_KEY is required in production"
-        : "GROQ_API_KEY is required in production",
-    );
+  constructor() {
+    super("XAI_API_KEY is required in production");
     this.name = "ProviderNotConfiguredError";
   }
 }
@@ -47,7 +43,7 @@ async function completeChat(args: {
   url: string;
   apiKey: string;
   model: string;
-  provider: "xai" | "groq";
+  provider: "xai";
   task: TaskSize;
   request: CompletionRequest;
   rates: RateCard;
@@ -70,7 +66,10 @@ async function completeChat(args: {
     signal: AbortSignal.timeout(args.timeoutMs),
   });
   if (!response.ok) {
-    throw new Error(`${args.provider} request failed (${response.status})`);
+    const detail = (await response.text()).replace(/\s+/g, " ").trim().slice(0, 180);
+    throw new Error(
+      `${args.provider} request failed (${response.status}) for model ${args.model}${detail ? `: ${detail}` : ""}`,
+    );
   }
   const json = (await response.json()) as ChatResponse;
   const text = json.choices?.[0]?.message?.content ?? "";
@@ -135,45 +134,22 @@ export function createXaiProvider(
   model: string,
   apiKey: string,
   env: Record<string, string | undefined>,
+  task: TaskSize = "heavy",
 ): CopilotProvider {
   return {
     id: "xai",
     model,
-    task: "heavy",
+    task,
     complete(request) {
       return completeChat({
         url: "https://api.x.ai/v1/chat/completions",
         apiKey,
         model,
         provider: "xai",
-        task: "heavy",
+        task,
         request,
-        rates: ratesFromEnv("xai", env),
+        rates: ratesFromEnv(env),
         timeoutMs: 120_000,
-      });
-    },
-  };
-}
-
-export function createGroqProvider(
-  model: string,
-  apiKey: string,
-  env: Record<string, string | undefined>,
-): CopilotProvider {
-  return {
-    id: "groq",
-    model,
-    task: "small",
-    complete(request) {
-      return completeChat({
-        url: "https://api.groq.com/openai/v1/chat/completions",
-        apiKey,
-        model,
-        provider: "groq",
-        task: "small",
-        request,
-        rates: ratesFromEnv("groq", env),
-        timeoutMs: 45_000,
       });
     },
   };
@@ -188,14 +164,10 @@ export function resolveProvider(
   const forceFake = env.COPILOT_PROVIDER === "fake";
   if (choice.provider === "xai") {
     if (env.XAI_API_KEY && !forceFake) {
-      return createXaiProvider(choice.model, env.XAI_API_KEY, env);
+      return createXaiProvider(choice.model, env.XAI_API_KEY, env, task);
     }
-    if (production && !forceFake) throw new ProviderNotConfiguredError("xai");
+    if (production && !forceFake) throw new ProviderNotConfiguredError();
     return createFakeProvider(task, choice.model);
   }
-  if (env.GROQ_API_KEY && !forceFake) {
-    return createGroqProvider(choice.model, env.GROQ_API_KEY, env);
-  }
-  if (production && !forceFake) throw new ProviderNotConfiguredError("groq");
   return createFakeProvider(task, choice.model);
 }

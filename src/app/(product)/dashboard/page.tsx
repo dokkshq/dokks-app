@@ -15,8 +15,8 @@ export default async function WorkspacesPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl">Workspaces</h1>
-        <Button nativeButton={false} render={<Link href="/dashboard/import" />}>
-          Import repo
+        <Button nativeButton={false} render={<Link href="/dashboard/new" />}>
+          New workspace
         </Button>
       </div>
       {sites.length === 0 ? (
@@ -38,7 +38,9 @@ export default async function WorkspacesPage() {
                 <p className="text-sm">{site.name}</p>
                 <p className="text-xs text-muted-foreground">{site.host}</p>
               </div>
-              <p className="text-sm text-muted-foreground">{site.fullName}</p>
+              <p className="text-sm text-muted-foreground">
+                {site.hasRepo ? site.fullName : "No repository"}
+              </p>
               <p className="flex items-center gap-2 text-sm">
                 <span
                   className={site.status === "ACTIVE" ? "size-1.5 rounded-full bg-live" : "size-1.5 rounded-full bg-muted-foreground"}

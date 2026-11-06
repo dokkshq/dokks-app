@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { OpentipMark } from "@/components/brand/logo";
+import { BrandMark } from "@/components/brand/logo";
+import { marketingUrl, productName } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SubmitButton } from "@/components/ui/submit-button";
 import {
   loadAnnouncementPreference,
@@ -34,11 +36,11 @@ export default async function EmailPreferencesPage({
     return (
       <main className="flex min-h-screen items-center justify-center bg-background px-4 py-16">
         <div className="flex w-full max-w-sm flex-col gap-6">
-          <OpentipMark />
+          <BrandMark />
           <div className="flex flex-col gap-2">
             <h1 className="text-2xl tracking-tight">Email preferences</h1>
             <p className="text-sm leading-6 text-muted-foreground">
-              This preferences link is invalid. Open the latest email from Opentip and use
+              This preferences link is invalid. Open the latest email from {productName()} and use
               the link in its footer.
             </p>
           </div>
@@ -47,9 +49,9 @@ export default async function EmailPreferencesPage({
             variant="outline"
             size="lg"
             className="w-full"
-            render={<Link href="https://opentip.tech" />}
+            render={<Link href={marketingUrl()} />}
           >
-            Back to opentip.tech
+            Back to {new URL(marketingUrl()).host}
           </Button>
         </div>
       </main>
@@ -61,7 +63,7 @@ export default async function EmailPreferencesPage({
     return (
       <main className="flex min-h-screen items-center justify-center bg-background px-4 py-16">
         <div className="flex w-full max-w-sm flex-col gap-6">
-          <OpentipMark />
+          <BrandMark />
           <div className="flex flex-col gap-2">
             <h1 className="text-2xl tracking-tight">Email preferences</h1>
             <p className="text-sm leading-6 text-muted-foreground">
@@ -79,11 +81,11 @@ export default async function EmailPreferencesPage({
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-16">
       <div className="flex w-full max-w-sm flex-col gap-6">
-        <OpentipMark />
+        <BrandMark />
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl tracking-tight">Email preferences</h1>
           <p className="text-sm leading-6 text-muted-foreground">
-            Choose which product emails Opentip sends to {email}.
+            Choose which product emails {productName()} sends to {email}.
           </p>
         </div>
 
@@ -105,16 +107,11 @@ export default async function EmailPreferencesPage({
         <form action={updateEmailPreferences} className="flex flex-col gap-4">
           <input type="hidden" name="token" value={token} />
           <label className="flex items-start gap-3 rounded-control border border-border bg-background p-4 text-sm">
-            <input
-              type="checkbox"
-              name="announcements"
-              defaultChecked={checked}
-              className="mt-0.5 size-4"
-            />
+            <Checkbox name="announcements" defaultChecked={checked} className="mt-0.5" />
             <span>
               <span className="block font-medium">Product updates</span>
               <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                Occasional email about new Opentip features and changes during the beta.
+                Occasional email about new {productName()} features and changes during the beta.
               </span>
             </span>
           </label>

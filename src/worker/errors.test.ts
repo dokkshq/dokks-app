@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { GithubRateLimitError } from "@/lib/github/api-error";
 import {
   PermanentJobError,
   TransientJobError,
@@ -22,6 +23,17 @@ describe("worker error classification", () => {
       permanent: true,
     });
     expect(classifyJobError(new Error("provider request failed (429)"))).toMatchObject({
+      permanent: false,
+    });
+  });
+
+  it("retries GitHub rate limits instead of treating 403 as permanent", () => {
+    expect(
+      classifyJobError(
+        new GithubRateLimitError("GitHub tree request failed (403). GitHub rate limit reached."),
+      ),
+    ).toEqual({
+      message: "GitHub tree request failed (403). GitHub rate limit reached.",
       permanent: false,
     });
   });

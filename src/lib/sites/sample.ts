@@ -1,4 +1,4 @@
-import { OPENTIP_BLUE } from "@/lib/brand";
+import { brandPrimary, marketingUrl, productName } from "@/lib/brand";
 import type { DocsSite } from "@/lib/sites/types";
 
 export const SAMPLE_SUBDOMAIN = "sample";
@@ -7,7 +7,7 @@ export function sampleSite(): DocsSite {
   return {
     id: "preview_sample",
     name: "Sample",
-    description: "Preview docs rendered by Opentip when a database is not connected.",
+    description: `Preview docs rendered by ${productName()} when a database is not connected.`,
     subdomain: SAMPLE_SUBDOMAIN,
     customDomain: null,
     customDomainStatus: null,
@@ -15,7 +15,7 @@ export function sampleSite(): DocsSite {
     pausedReason: null,
     theme: "LEDGER",
     appearance: "LIGHT",
-    primaryColor: OPENTIP_BLUE,
+    primaryColor: brandPrimary(),
     logoLightUrl: null,
     logoDarkUrl: null,
     faviconUrl: null,
@@ -30,7 +30,7 @@ export function sampleSite(): DocsSite {
         slug: "",
         section: "Overview",
         title: "Sample docs",
-        description: "A preview of a hosted Opentip docs site.",
+        description: `A preview of a hosted ${productName()} docs site.`,
         navOrder: 0,
         published: true,
         noindex: false,
@@ -57,8 +57,8 @@ export function sampleSite(): DocsSite {
         handEdited: false,
         ogImageUrl: null,
         content: [
-          "A push webhook is checked, then stored once. If GitHub delivers the same event again, Opentip does not queue a second job.",
-          "Small updates run on Groq gpt-oss-120b. A first full build runs on xAI grok-build-0.1. If those keys are missing in development, a fake provider is used.",
+          `A push webhook is checked, then stored once. If GitHub delivers the same event again, ${productName()} does not queue a second job.`,
+          "Builds and smaller updates both run on grok-build-0.1. If the xAI key is missing in development, a fake provider is used.",
           "Pages a customer edited by hand are marked and are not overwritten silently.",
         ].join("\n\n"),
       },
@@ -75,7 +75,7 @@ export function sampleSite(): DocsSite {
         content: [
           "A site can store a light logo, a dark logo, a favicon, and one primary color. That color tints links, the active section, and the generated social image.",
           "Every published page gets a signed 1200 by 630 image with the logo, section, title, and description. A bad signature is rejected.",
-          "The corner pill on this page links back to opentip.tech.",
+          `The corner pill on this page links back to ${new URL(marketingUrl()).host}.`,
         ].join("\n\n"),
       },
     ],

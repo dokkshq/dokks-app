@@ -1,4 +1,5 @@
 import { Text } from "react-email";
+import { productName } from "@/lib/brand";
 import {
   EmailButton,
   EmailLayout,
@@ -23,7 +24,7 @@ export function OpsEmail({
       preview={previewFor(body)}
       heading={subject}
       appUrl={appUrl}
-      reason="You received this because you are on the Opentip operations alert list."
+      reason={`You received this because you are on the ${productName()} operations alert list.`}
     >
       <Text
         style={{

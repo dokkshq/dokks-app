@@ -15,7 +15,7 @@ export async function reserveDailySpend(input: {
   estimateUsd: number;
   repoCapUsd: number;
   globalCapUsd: number;
-  provider: "XAI" | "GROQ" | "FAKE";
+  provider: "XAI" | "FAKE";
   model: string;
   jobId?: string;
   jobKind?: "FIRST_BUILD" | "PUSH_UPDATE" | "CHAT_EDIT" | "SUMMARY_REFRESH";

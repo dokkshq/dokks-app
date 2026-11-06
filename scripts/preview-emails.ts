@@ -7,7 +7,7 @@ import { BetaApprovalEmail, BetaInviteEmail } from "../src/lib/email/templates/b
 import { LoginCodeEmail } from "../src/lib/email/templates/login-code";
 import { OpsEmail } from "../src/lib/email/templates/ops";
 
-const appUrl = "https://beta.opentip.tech";
+const appUrl = process.env.APP_URL ?? "http://localhost:3000";
 const token = "v1.YWRhQGV4YW1wbGUuY29t.example-signature";
 const preferences = {
   manageUrl: `${appUrl}/email/preferences?token=${token}`,
@@ -49,7 +49,7 @@ const emails = [
     slug: "announcement",
     element: createElement(AnnouncementEmail, {
       title: "Copilot now updates only the pages your change affects",
-      body: "Push updates are smaller and faster now.\n\nOpen Opentip to see the latest build for your site.",
+      body: "Push updates are smaller and faster now.\n\nOpen the app to see the latest build for your site.",
       appUrl,
       preferences,
     }),
@@ -57,7 +57,7 @@ const emails = [
   {
     slug: "ops",
     element: createElement(OpsEmail, {
-      subject: "Opentip AI spend above $25",
+      subject: "AI spend above $25",
       body: "Estimated AI spend for today is $31.42, above the daily threshold of $25.",
       appUrl,
     }),

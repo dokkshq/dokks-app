@@ -3,6 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { FileInput } from "@/components/ui/file-input";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { getRequestSession } from "@/lib/auth";
 import { getViewSession, readActAs } from "@/lib/admin/act-as";
@@ -102,13 +103,12 @@ export default async function ProfilePage({
           </Avatar>
           <div className="flex flex-wrap gap-2">
             <form action={uploadPicture} className="flex flex-wrap items-center gap-2">
-              <input
-                type="file"
+              <FileInput
                 name="picture"
                 accept="image/png,image/jpeg,image/webp"
                 required
                 disabled={readOnly}
-                className="text-sm"
+                label="Choose image"
               />
               <SubmitButton size="sm" disabled={readOnly} loadingText="Uploading...">
                 Upload

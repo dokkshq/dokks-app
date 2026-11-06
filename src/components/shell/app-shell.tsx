@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
-import { OpentipLockup } from "@/components/brand/logo";
+import { BrandLockup } from "@/components/brand/logo";
 import { UserMenu, type MenuUser } from "@/components/shell/user-menu";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/ui/submit-button";
@@ -53,7 +53,7 @@ export function AppShell({
       ) : null}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-sidebar md:flex">
         <div className="flex h-14 items-center px-5">
-          <OpentipLockup />
+          <BrandLockup />
         </div>
         <nav className="flex flex-col gap-1 px-3">
           {items.map((item) => (
@@ -76,7 +76,7 @@ export function AppShell({
               <SheetContent side="left" className="w-72">
                 <SheetHeader>
                   <SheetTitle>
-                    <OpentipLockup />
+                    <BrandLockup />
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="flex flex-col gap-1 px-4">
@@ -87,7 +87,7 @@ export function AppShell({
               </SheetContent>
             </Sheet>
             <span className="md:hidden">
-              <OpentipLockup />
+              <BrandLockup />
             </span>
           </div>
           <div className="flex items-center gap-3">

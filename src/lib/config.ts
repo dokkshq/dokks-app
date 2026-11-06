@@ -1,21 +1,36 @@
 type Env = Record<string, string | undefined>;
 
+function required(env: Env, name: string): string {
+  const value = env[name]?.trim();
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
 export function appUrl(env: Env = process.env): string {
-  return (env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  return required(env, "APP_URL").replace(/\/$/, "");
 }
 
 export function docsRootDomain(env: Env = process.env): string {
-  return (env.DOCS_ROOT_DOMAIN || "opentip.tech").toLowerCase();
+  return required(env, "DOCS_ROOT_DOMAIN").toLowerCase();
 }
 
 export function appHosts(env: Env = process.env): string[] {
-  let fromApp = "beta.opentip.tech";
+  let fromApp: string;
   try {
-    fromApp = new URL(appUrl(env)).host;
-  } catch {
-    fromApp = "beta.opentip.tech";
+    fromApp = new URL(appUrl(env)).host.toLowerCase();
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error("APP_URL must be an absolute URL");
+    throw error;
   }
-  return Array.from(new Set([fromApp, "beta.opentip.tech", "localhost", "127.0.0.1"]));
+  const extra = (env.APP_HOSTS ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+  const hosts = [fromApp, ...extra];
+  if (env.NODE_ENV !== "production") {
+    hosts.push("localhost", "127.0.0.1");
+  }
+  return Array.from(new Set(hosts));
 }
 
 export function sessionSecret(env: Env = process.env): string | null {
@@ -35,10 +50,19 @@ export function showPlanPrices(env: Env = process.env): boolean {
 }
 
 export function githubAppSlug(env: Env = process.env): string {
-  const slug = (env.GITHUB_APP_SLUG || "opentip-copilot").trim().toLowerCase();
-  return slug || "opentip-copilot";
+  return required(env, "GITHUB_APP_SLUG").toLowerCase();
 }
 
 export function githubAppInstallUrl(env: Env = process.env): string {
   return `https://github.com/apps/${githubAppSlug(env)}/installations/new`;
+}
+
+export function socialXUrl(env: Env = process.env): string | null {
+  const value = env.SOCIAL_X_URL?.trim();
+  return value || null;
+}
+
+export function socialGithubUrl(env: Env = process.env): string | null {
+  const value = env.SOCIAL_GITHUB_URL?.trim();
+  return value || null;
 }

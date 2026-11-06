@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { appHosts, docsRootDomain, ogSecret } from "@/lib/config";
 import { buildOgImagePath, parseOgParams } from "@/lib/og/sign";
 import { resolveHost } from "@/lib/sites/host";
+import { absoluteAssetUrl } from "@/lib/media/public-url";
 import { canonicalOrigin, findPage, pagePath } from "@/lib/sites/load";
 import type { DocsPage, DocsSite } from "@/lib/sites/types";
 
@@ -51,7 +52,12 @@ export function docsPageMetadata(
     description,
     alternates: { canonical },
     robots: noindex ? { index: false, follow: false } : { index: true, follow: true },
-    icons: site.faviconUrl ? { icon: site.faviconUrl } : undefined,
+    icons: site.faviconUrl
+      ? {
+          icon: [{ url: absoluteAssetUrl(site.faviconUrl) ?? site.faviconUrl }],
+          apple: [{ url: absoluteAssetUrl(site.faviconUrl) ?? site.faviconUrl }],
+        }
+      : { icon: [] },
     openGraph: {
       title,
       description,
@@ -72,7 +78,7 @@ function socialImage(site: DocsSite, page: DocsPage, origin: string): string | u
     title: page.title,
     description: page.description ?? "",
     primary: site.primaryColor,
-    logo: site.logoLightUrl ?? "",
+    logo: absoluteAssetUrl(site.logoLightUrl) ?? "",
     background: site.ogBackgroundUrl ?? "",
   });
   if (!parsed.ok) return undefined;

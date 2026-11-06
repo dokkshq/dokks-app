@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
+import { brandPrimary, productName } from "@/lib/brand";
 import {
   Dialog,
   DialogClose,
@@ -20,10 +21,12 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Radio, RadioGroup } from "@/components/ui/radio-group";
+import { SelectField } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ImportField, ImportFormState } from "@/lib/import/import-state";
 import { initialImportFormState } from "@/lib/import/import-state";
-import type { ImportRepo } from "@/lib/import/queries";
+import type { ImportRepo } from "@/lib/import/types";
 import { importRepository } from "./actions";
 
 type ImportRepoDialogProps = {
@@ -43,7 +46,7 @@ function ImportForm({ repo, docsRoot, isFirstSite }: ImportRepoDialogProps) {
     initialImportFormState,
   );
   const [subdomain, setSubdomain] = useState(repo.suggestedSubdomain);
-  const [primaryColor, setPrimaryColor] = useState("#2A2AD6");
+  const [primaryColor, setPrimaryColor] = useState(brandPrimary());
   const [reviewMode, setReviewMode] = useState<"AUTO_PUBLISH" | "REVIEW">("AUTO_PUBLISH");
   const formError = state.error?.field === "form" ? state.error.message : undefined;
 
@@ -117,34 +120,35 @@ function ImportForm({ repo, docsRoot, isFirstSite }: ImportRepoDialogProps) {
       <div className="grid gap-4 sm:grid-cols-2">
         <Field data-invalid={Boolean(errorFor(state, "theme"))}>
           <FieldLabel htmlFor={`${id}-theme`}>Theme</FieldLabel>
-          <select
+          <SelectField
             id={`${id}-theme`}
             name="theme"
             defaultValue="MINIMAL"
             aria-invalid={Boolean(errorFor(state, "theme"))}
-            className="h-8 w-full rounded-control border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
-          >
-            <option value="MINIMAL">Minimal</option>
-            <option value="LEDGER">Ledger</option>
-          </select>
+            options={[
+              { value: "MINIMAL", label: "Minimal" },
+              { value: "LEDGER", label: "Ledger" },
+            ]}
+          />
           <FieldError>{errorFor(state, "theme")}</FieldError>
         </Field>
 
         <Field data-invalid={Boolean(errorFor(state, "primaryColor"))}>
           <FieldLabel htmlFor={`${id}-primary-color`}>Primary color</FieldLabel>
           <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="size-8 shrink-0 rounded-control border border-border"
+              style={{ backgroundColor: primaryColor }}
+            />
             <Input
               id={`${id}-primary-color`}
               name="primaryColor"
-              type="color"
               value={primaryColor}
               onChange={(event) => setPrimaryColor(event.currentTarget.value)}
+              spellCheck={false}
               aria-invalid={Boolean(errorFor(state, "primaryColor"))}
-              className="h-8 w-14 cursor-pointer p-1"
             />
-            <span className="font-mono text-xs text-muted-foreground">
-              {primaryColor.toUpperCase()}
-            </span>
           </div>
           <FieldError>{errorFor(state, "primaryColor")}</FieldError>
         </Field>
@@ -152,56 +156,37 @@ function ImportForm({ repo, docsRoot, isFirstSite }: ImportRepoDialogProps) {
 
       <Field data-invalid={Boolean(errorFor(state, "reviewMode"))}>
         <FieldLabel>How should updates work?</FieldLabel>
-        <div className="grid gap-2">
-          <label
-            className={`cursor-pointer rounded-control border p-3 transition ${
-              reviewMode === "AUTO_PUBLISH"
-                ? "border-foreground bg-muted/40"
-                : "border-border bg-background"
-            }`}
-          >
+        <RadioGroup
+          name="reviewMode"
+          value={reviewMode}
+          onValueChange={(value) => {
+            if (value === "AUTO_PUBLISH" || value === "REVIEW") setReviewMode(value)
+          }}
+          className="grid gap-2"
+        >
+          <label className="cursor-pointer rounded-control border border-border p-3 has-data-checked:border-foreground has-data-checked:bg-muted/40">
             <span className="flex items-start gap-3">
-              <input
-                type="radio"
-                name="reviewMode"
-                value="AUTO_PUBLISH"
-                checked={reviewMode === "AUTO_PUBLISH"}
-                onChange={() => setReviewMode("AUTO_PUBLISH")}
-                className="mt-1"
-              />
+              <Radio value="AUTO_PUBLISH" className="mt-1" />
               <span>
                 <span className="block text-sm font-medium">Auto-publish updates</span>
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  When you push to GitHub, Opentip updates your live docs automatically. Best for most teams.
+                  When you push to GitHub, {productName()} updates your live docs automatically. Best for most teams.
                 </span>
               </span>
             </span>
           </label>
-          <label
-            className={`cursor-pointer rounded-control border p-3 transition ${
-              reviewMode === "REVIEW"
-                ? "border-foreground bg-muted/40"
-                : "border-border bg-background"
-            }`}
-          >
+          <label className="cursor-pointer rounded-control border border-border p-3 has-data-checked:border-foreground has-data-checked:bg-muted/40">
             <span className="flex items-start gap-3">
-              <input
-                type="radio"
-                name="reviewMode"
-                value="REVIEW"
-                checked={reviewMode === "REVIEW"}
-                onChange={() => setReviewMode("REVIEW")}
-                className="mt-1"
-              />
+              <Radio value="REVIEW" className="mt-1" />
               <span>
                 <span className="block text-sm font-medium">Review changes first</span>
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  Opentip prepares the changes, but your live docs stay unchanged until you approve them. Best for public or sensitive docs.
+                  {productName()} prepares the changes, but your live docs stay unchanged until you approve them. Best for public or sensitive docs.
                 </span>
               </span>
             </span>
           </label>
-        </div>
+        </RadioGroup>
         {isFirstSite ? (
           <FieldDescription>
             This is your first site. You can change this later in site settings.
@@ -215,7 +200,7 @@ function ImportForm({ repo, docsRoot, isFirstSite }: ImportRepoDialogProps) {
       {formError ? <FieldError>{formError}</FieldError> : null}
 
       <p className="text-xs text-muted-foreground">
-        Nothing is created until you click Build site. The first build is queued immediately.
+        Nothing is created until you click Start build. You will stay in the workspace chat to watch the agent.
       </p>
 
       <DialogFooter>
@@ -223,7 +208,7 @@ function ImportForm({ repo, docsRoot, isFirstSite }: ImportRepoDialogProps) {
           Cancel
         </DialogClose>
         <Button type="submit" loading={pending} loadingText="Starting build...">
-          Build site
+          Start build
         </Button>
       </DialogFooter>
     </form>

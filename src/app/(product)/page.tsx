@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { OpentipLockup } from "@/components/brand/logo";
+import { BrandLockup } from "@/components/brand/logo";
+import { productName } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { redirectAuthenticatedEntry } from "@/lib/auth/entry";
 
@@ -9,11 +10,11 @@ export default async function HomePage() {
   await redirectAuthenticatedEntry();
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center gap-8 px-6 py-16">
-      <OpentipLockup href="/" mark={28} />
+      <BrandLockup href="/" />
       <div className="flex flex-col gap-3">
         <h1 className="text-4xl tracking-tight">Hosted docs and a Changelog for GitHub repos.</h1>
         <p className="max-w-xl text-base leading-7 text-muted-foreground">
-          Opentip writes the docs and updates them on every push.
+          {productName()} writes the docs and updates them on every push.
         </p>
       </div>
       <div className="flex flex-col gap-3 sm:flex-row">

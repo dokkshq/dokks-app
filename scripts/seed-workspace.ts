@@ -175,7 +175,7 @@ async function main() {
       status: "SUCCEEDED",
       phase: "COMPLETE",
       progress: 100,
-      provider: "GROQ",
+      provider: "XAI",
       model: "fake",
       idempotencyKey: "seed:chat:plugr",
       promptTokens: 1200,

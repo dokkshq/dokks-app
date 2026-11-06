@@ -97,6 +97,7 @@ async function execute(jobId: string, config: WorkerConfig): Promise<void> {
           ? `Attempt failed. Retrying. ${classified.message}`
           : `Build failed. ${classified.message}`,
       detail: outcome === "retried" ? "Waiting to retry" : "Build failed",
+      metadata: { role: "reply" },
     }).catch(() => undefined);
   }
 }

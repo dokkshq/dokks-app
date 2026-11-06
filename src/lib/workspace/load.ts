@@ -1,6 +1,10 @@
 import { docsRootDomain } from "@/lib/config";
 import { getPrisma } from "@/lib/db";
 import type { Session } from "@/lib/session";
+import type { WorkspaceJob } from "@/lib/workspace/jobs";
+
+export type { WorkspaceJob, WorkspaceJobEvent } from "@/lib/workspace/jobs";
+export { jobFailureReason } from "@/lib/workspace/jobs";
 
 export type WorkspacePage = {
   id: string;
@@ -33,6 +37,7 @@ export type WorkspaceRecord = {
   payoutWallet: string | null;
   customDomain: string | null;
   customDomainStatus: string | null;
+  hasRepo: boolean;
   ownerLogin: string;
   repoOwner: string;
   repoName: string;
@@ -48,14 +53,8 @@ export type WorkspaceRecord = {
     content: string;
     changeNote: string | null;
   }>;
-  jobs: Array<{
-    id: string;
-    kind: string;
-    status: string;
-    error: string | null;
-    createdAt: string;
-    finishedAt: string | null;
-  }>;
+  jobs: WorkspaceJob[];
+  activeJob: WorkspaceJob | null;
   chats: Array<{
     id: string;
     instruction: string;
@@ -71,6 +70,39 @@ export type WorkspaceRecord = {
     source: string;
   }>;
 };
+
+function readEventMeta(metadata: unknown, message: string): {
+  role: "thought" | "say" | "action" | "reply" | "note";
+  body: string | null;
+  explored?: number;
+  searches?: number;
+  edited?: number;
+} {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return { role: "note", body: null };
+  }
+  const record = metadata as {
+    role?: unknown;
+    body?: unknown;
+    explored?: unknown;
+    searches?: unknown;
+    edited?: unknown;
+  };
+  const role =
+    record.role === "thought" || record.role === "say" || record.role === "action" || record.role === "reply"
+      ? record.role
+      : "note";
+  const body = typeof record.body === "string" && record.body.trim() && record.body.trim() !== message.trim()
+    ? record.body.trim()
+    : null;
+  return {
+    role,
+    body,
+    explored: typeof record.explored === "number" ? record.explored : undefined,
+    searches: typeof record.searches === "number" ? record.searches : undefined,
+    edited: typeof record.edited === "number" ? record.edited : undefined,
+  };
+}
 
 export async function loadWorkspaces(session: Session) {
   const prisma = getPrisma();
@@ -92,12 +124,132 @@ export async function loadWorkspaces(session: Session) {
     name: site.name,
     subdomain: site.subdomain,
     status: site.status,
-    owner: site.repo.owner,
-    repo: site.repo.name,
-    fullName: site.repo.fullName,
+    owner: site.repo?.owner ?? site.name,
+    repo: site.repo?.name ?? "No repo",
+    fullName: site.repo?.fullName ?? "No repository",
+    hasRepo: Boolean(site.repo),
     pages: site._count.pages,
     host: `${site.subdomain}.${docsRootDomain()}`,
   }));
+}
+
+export async function loadWorkspaceActivity(
+  session: Session,
+  subdomain: string,
+): Promise<WorkspaceJob[] | null> {
+  const prisma = getPrisma();
+  if (!prisma) return null;
+  const site = await prisma.site.findFirst({
+    where: { subdomain, ownerId: session.userId },
+    select: { repoId: true },
+  });
+  if (!site) return null;
+  if (!site.repoId) return [];
+  const jobs = await prisma.job.findMany({
+    where: { repoId: site.repoId },
+    orderBy: { createdAt: "desc" },
+    take: 8,
+    select: {
+      id: true,
+      kind: true,
+      status: true,
+      phase: true,
+      progress: true,
+      detail: true,
+      error: true,
+      createdAt: true,
+      finishedAt: true,
+      events: {
+        orderBy: { sequence: "asc" },
+        take: 120,
+        select: {
+          id: true,
+          sequence: true,
+          level: true,
+          message: true,
+          metadata: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+  return jobs.map((job) => ({
+    id: job.id,
+    kind: job.kind,
+    status: job.status,
+    phase: job.phase,
+    progress: job.progress,
+    detail: job.detail,
+    error: job.error,
+    createdAt: job.createdAt.toISOString(),
+    finishedAt: job.finishedAt?.toISOString() ?? null,
+    events: job.events.map((event) => ({
+      id: event.id,
+      sequence: event.sequence,
+      level: event.level,
+      message: event.message,
+      createdAt: event.createdAt.toISOString(),
+      ...readEventMeta(event.metadata, event.message),
+    })),
+  }));
+}
+
+export async function loadWorkspaceShell(session: Session, subdomain: string) {
+  const prisma = getPrisma();
+  if (!prisma) return null;
+  const site = await prisma.site.findFirst({
+    where: { subdomain, ownerId: session.userId },
+    select: {
+      name: true,
+      subdomain: true,
+      status: true,
+      reviewMode: true,
+      repo: { select: { owner: true, name: true } },
+      _count: { select: { pages: true, worklog: true } },
+    },
+  });
+  if (!site) return null;
+  return {
+    subdomain: site.subdomain,
+    name: site.name,
+    owner: site.repo?.owner ?? site.name,
+    repo: site.repo?.name ?? "No repo",
+    host: `${site.subdomain}.${docsRootDomain()}`,
+    status: site.status,
+    reviewMode: site.reviewMode,
+    hasRepo: Boolean(site.repo),
+    pages: site._count.pages,
+    changelog: site._count.worklog,
+  };
+}
+
+export async function loadWorkspaceBranding(session: Session, subdomain: string) {
+  const prisma = getPrisma();
+  if (!prisma) return null;
+  const site = await prisma.site.findFirst({
+    where: { subdomain, ownerId: session.userId },
+    select: {
+      id: true,
+      name: true,
+      subdomain: true,
+      theme: true,
+      appearance: true,
+      primaryColor: true,
+      logoLightUrl: true,
+      logoDarkUrl: true,
+      faviconUrl: true,
+      pages: {
+        orderBy: [{ navOrder: "asc" }, { title: "asc" }],
+        take: 8,
+        select: { slug: true, title: true, section: true },
+      },
+    },
+  });
+  if (!site) return null;
+  return {
+    ...site,
+    host: `${site.subdomain}.${docsRootDomain()}`,
+  };
 }
 
 export async function loadWorkspace(
@@ -110,7 +262,7 @@ export async function loadWorkspace(
     where: { subdomain, ownerId: session.userId },
     include: {
       owner: { select: { login: true } },
-      repo: { select: { owner: true, name: true, fullName: true, defaultBranch: true } },
+      repo: { select: { id: true, owner: true, name: true, fullName: true, defaultBranch: true } },
       pages: { orderBy: [{ navOrder: "asc" }, { title: "asc" }] },
       revisions: {
         where: { status: "PENDING" },
@@ -125,19 +277,59 @@ export async function loadWorkspace(
     },
   });
   if (!site) return null;
-  const jobs = await prisma.job.findMany({
-    where: { repoId: site.repoId },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-    select: {
-      id: true,
-      kind: true,
-      status: true,
-      error: true,
-      createdAt: true,
-      finishedAt: true,
-    },
-  });
+  const jobs = site.repoId
+    ? await prisma.job.findMany({
+        where: { repoId: site.repoId },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          kind: true,
+          status: true,
+          phase: true,
+          progress: true,
+          detail: true,
+          error: true,
+          createdAt: true,
+          finishedAt: true,
+          events: {
+            orderBy: { sequence: "asc" },
+            take: 120,
+            select: {
+              id: true,
+              sequence: true,
+              level: true,
+              message: true,
+              metadata: true,
+              createdAt: true,
+            },
+          },
+        },
+      })
+    : [];
+  const mappedJobs: WorkspaceJob[] = jobs.map((job) => ({
+    id: job.id,
+    kind: job.kind,
+    status: job.status,
+    phase: job.phase,
+    progress: job.progress,
+    detail: job.detail,
+    error: job.error,
+    createdAt: job.createdAt.toISOString(),
+    finishedAt: job.finishedAt?.toISOString() ?? null,
+    events: job.events.map((event) => ({
+      id: event.id,
+      sequence: event.sequence,
+      level: event.level,
+      message: event.message,
+      createdAt: event.createdAt.toISOString(),
+      ...readEventMeta(event.metadata, event.message),
+    })),
+  }));
+  const activeJob =
+    mappedJobs.find((job) => job.status === "QUEUED" || job.status === "RUNNING") ??
+    mappedJobs.find((job) => job.status === "FAILED") ??
+    null;
   return {
     id: site.id,
     name: site.name,
@@ -160,11 +352,12 @@ export async function loadWorkspace(
     payoutWallet: site.payoutWallet,
     customDomain: site.customDomain,
     customDomainStatus: site.customDomainStatus,
+    hasRepo: Boolean(site.repo),
     ownerLogin: site.owner.login,
-    repoOwner: site.repo.owner,
-    repoName: site.repo.name,
-    repoFullName: site.repo.fullName,
-    branch: site.repo.defaultBranch,
+    repoOwner: site.repo?.owner ?? site.name,
+    repoName: site.repo?.name ?? "No repo",
+    repoFullName: site.repo?.fullName ?? "No repository",
+    branch: site.repo?.defaultBranch ?? "main",
     publicHost: `${site.subdomain}.${docsRootDomain()}`,
     pages: site.pages.map((page) => ({
       id: page.id,
@@ -182,14 +375,8 @@ export async function loadWorkspace(
       content: revision.content,
       changeNote: revision.changeNote,
     })),
-    jobs: jobs.map((job) => ({
-      id: job.id,
-      kind: job.kind,
-      status: job.status,
-      error: job.error,
-      createdAt: job.createdAt.toISOString(),
-      finishedAt: job.finishedAt?.toISOString() ?? null,
-    })),
+    jobs: mappedJobs,
+    activeJob,
     chats: site.chatEdits.map((chat) => ({
       id: chat.id,
       instruction: chat.instruction,

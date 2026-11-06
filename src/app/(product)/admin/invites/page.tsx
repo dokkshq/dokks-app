@@ -59,7 +59,7 @@ export default async function InvitesPage({
               </Field>
               <Field>
                 <FieldLabel htmlFor="wave">Wave</FieldLabel>
-                <Input id="wave" name="wave" type="number" min={1} defaultValue={Number(params.wave ?? 1)} />
+                <Input id="wave" name="wave" type="text" inputMode="numeric" defaultValue={String(params.wave ?? 1)} />
               </Field>
             </FieldGroup>
             <SubmitButton className="w-fit" loadingText="Sending...">

@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/shell/page-header";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getPrisma } from "@/lib/db";
@@ -51,11 +52,11 @@ export default async function AnnouncementsPage({
               className="rounded-control border border-border bg-background px-3 py-2 text-sm"
             />
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="active" defaultChecked />
+              <Checkbox name="active" defaultChecked />
               Show as an in-app banner
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="email" />
+              <Checkbox name="email" />
               Email beta users who have not unsubscribed
             </label>
             <SubmitButton className="w-fit" loadingText="Publishing...">

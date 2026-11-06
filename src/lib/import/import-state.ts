@@ -11,3 +11,7 @@ export type ImportFormState = {
 };
 
 export const initialImportFormState: ImportFormState = { error: null };
+
+export type WorkspaceFormState = ImportFormState;
+
+export const initialWorkspaceFormState: WorkspaceFormState = { error: null };

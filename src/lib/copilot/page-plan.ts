@@ -1,5 +1,9 @@
 import { normalizeSlug, type PageDraft } from "@/lib/copilot/contract";
 import type { Audience, HttpRoute, RepoFacts } from "@/lib/copilot/facts";
+import type { ProductModel } from "@/lib/copilot/product-model";
+import { buildProductModel } from "@/lib/copilot/product-model";
+import { extractProductSurface, type ProductSurface } from "@/lib/copilot/product-surface";
+import type { RepoSnapshot } from "@/lib/github/repo-content";
 
 export type PageKind = "home" | "guide" | "concept" | "api" | "reference";
 
@@ -11,6 +15,8 @@ export type PlannedPage = {
   navOrder: number;
   kind: PageKind;
   audience: Audience;
+  reader: "user" | "integrator";
+  question: string;
   sourcePaths: string[];
   routes: HttpRoute[];
 };
@@ -20,8 +26,23 @@ const MAX_PAGES = 12;
 export function planPagesFromFacts(input: {
   facts: RepoFacts;
   treePaths: string[];
+  files?: RepoSnapshot["files"];
+  model?: ProductModel;
+}): PlannedPage[] {
+  const files = input.files ?? [];
+  const surface = extractProductSurface({ files, treePaths: input.treePaths }, input.facts);
+  const model = input.model ?? buildProductModel(surface, input.facts);
+  return planPagesFromProduct({ facts: input.facts, surface, model, treePaths: input.treePaths });
+}
+
+export function planPagesFromProduct(input: {
+  facts: RepoFacts;
+  surface: ProductSurface;
+  model: ProductModel;
+  treePaths: string[];
 }): PlannedPage[] {
   const facts = input.facts;
+  const model = input.model;
   const tree = new Set(input.treePaths);
   const pages: PlannedPage[] = [];
   const readme = facts.readmePath && tree.has(facts.readmePath) ? [facts.readmePath] : [];
@@ -29,75 +50,118 @@ export function planPagesFromFacts(input: {
     const name = path.split("/").pop() ?? "";
     return name === "package.json" || name.endsWith(".env.example") || name === "schema.prisma";
   });
+  const reader = model.reader;
 
   pages.push({
     slug: "",
     section: "Introduction",
     title: facts.packageName ? titleFromPackage(facts.packageName) : "Overview",
-    description: facts.packageDescription || "What this project does and where to start.",
+    description: model.promise || facts.packageDescription || "What this product does.",
     navOrder: 0,
     kind: "home",
     audience: facts.audience,
-    sourcePaths: unique([...readme, ...manifest.slice(0, 3)]),
+    reader,
+    question: "What is this?",
+    sourcePaths: unique([...readme, ...manifest.slice(0, 2), ...input.surface.screens.slice(0, 1).map((screen) => screen.source)]),
     routes: [],
   });
 
-  pages.push({
-    slug: "getting-started",
-    section: "Guides",
-    title: "Getting started",
-    description: setupDescription(facts),
-    navOrder: 10,
-    kind: "guide",
-    audience: facts.audience,
-    sourcePaths: unique([...readme, ...manifest, ...facts.entryPoints.slice(0, 2)].filter((path) => tree.has(path) || manifest.includes(path))),
-    routes: [],
-  });
-
-  if (facts.envVars.length > 0 || facts.schemaModels.length > 0) {
+  let order = 10;
+  for (const job of model.jobs) {
+    if (pages.length >= MAX_PAGES) break;
+    if (pages.some((page) => page.slug === job.slug)) continue;
+    const sources = job.evidence.filter((path) => tree.has(path)).slice(0, 8);
+    if (sources.length === 0 && job.slug !== "getting-started") continue;
     pages.push({
-      slug: "configuration",
+      slug: job.slug,
       section: "Guides",
-      title: "Configuration",
-      description: "Environment variables and local setup.",
-      navOrder: 20,
+      title: job.title,
+      description: job.question,
+      navOrder: order,
       kind: "guide",
       audience: facts.audience,
+      reader,
+      question: job.question,
+      sourcePaths: sources.length > 0 ? sources : unique([...readme, ...manifest]).slice(0, 4),
+      routes: [],
+    });
+    order += 1;
+  }
+
+  for (const noun of model.nouns) {
+    if (pages.length >= MAX_PAGES) break;
+    if (pages.some((page) => page.slug === noun.slug || page.title.toLowerCase() === noun.name.toLowerCase())) continue;
+    const sources = noun.evidence.filter((path) => tree.has(path)).slice(0, 6);
+    if (sources.length === 0) continue;
+    pages.push({
+      slug: noun.slug,
+      section: "Concepts",
+      title: noun.name,
+      description: `What ${noun.name} means in this product.`,
+      navOrder: order,
+      kind: "concept",
+      audience: facts.audience,
+      reader,
+      question: `What is ${noun.name}?`,
+      sourcePaths: sources,
+      routes: [],
+    });
+    order += 1;
+  }
+
+  if (reader === "integrator" && (facts.envVars.length > 0 || facts.schemaModels.length > 0)) {
+    pages.push({
+      slug: "configuration",
+      section: "Reference",
+      title: "Configuration",
+      description: "Settings required to run or call this product.",
+      navOrder: 80,
+      kind: "reference",
+      audience: facts.audience,
+      reader,
+      question: "Which settings does this require?",
       sourcePaths: unique(manifest.filter((path) => path.endsWith(".env.example") || path.endsWith("schema.prisma") || path.endsWith("package.json"))),
       routes: [],
     });
   }
 
-  if (facts.audience === "library") {
+  if (reader === "integrator" && (facts.audience === "library" || input.surface.kind === "library")) {
     pages.push({
       slug: "reference",
       section: "Reference",
       title: "Reference",
       description: "Exports and entry points.",
-      navOrder: 30,
+      navOrder: 81,
       kind: "reference",
       audience: facts.audience,
+      reader,
+      question: "What can I import?",
       sourcePaths: unique([...facts.entryPoints, facts.packageMain].filter((path): path is string => Boolean(path && tree.has(path)))).slice(0, 8),
       routes: [],
     });
   }
 
-  if (facts.audience === "cli" || facts.binaries.length > 0) {
+  if (input.surface.kind === "cli" || facts.binaries.length > 0) {
     pages.push({
       slug: "commands",
-      section: "Guides",
+      section: "Reference",
       title: "Commands",
-      description: "Commands from the package scripts and binaries.",
-      navOrder: 30,
-      kind: "guide",
+      description: "Commands this tool actually ships.",
+      navOrder: 82,
+      kind: "reference",
       audience: "cli",
+      reader,
+      question: "Which commands can I run?",
       sourcePaths: unique([...manifest, ...facts.binaries, ...facts.entryPoints].filter((path) => tree.has(path))).slice(0, 8),
       routes: [],
     });
   }
 
-  pages.push(...apiPages(facts, tree));
-  return pages.slice(0, MAX_PAGES);
+  if (reader === "integrator") {
+    pages.push(...apiPages(facts, tree, reader));
+  }
+
+  return pages.filter((page) => page.slug !== "" || page.kind === "home").slice(0, MAX_PAGES);
 }
 
 export function mergePagePlan(input: {
@@ -132,14 +196,17 @@ export function mergePagePlan(input: {
     const kind = raw.kind === "api" || raw.kind === "guide" || raw.kind === "concept" || raw.kind === "reference" || raw.kind === "home"
       ? raw.kind
       : "guide";
+    if (input.base[0]?.reader === "user" && (kind === "api" || slug.startsWith("api-reference"))) continue;
     bySlug.set(slug, {
       slug,
-      section: kind === "api" || kind === "reference" ? "Reference" : "Guides",
+      section: kind === "api" || kind === "reference" ? "Reference" : kind === "concept" ? "Concepts" : "Guides",
       title,
       description: typeof raw.description === "string" ? raw.description.trim().slice(0, 280) : "",
       navOrder: typeof raw.navOrder === "number" ? raw.navOrder : 50 + bySlug.size,
       kind,
       audience: input.facts.audience,
+      reader: input.base[0]?.reader ?? "integrator",
+      question: typeof raw.description === "string" ? raw.description.trim().slice(0, 200) : title,
       sourcePaths: sources,
       routes: [],
     });
@@ -180,6 +247,24 @@ export function pagesAffectedByChange(input: {
   return selected;
 }
 
+export function productCritique(
+  content: string,
+  page: PlannedPage,
+  model: ProductModel,
+): string[] {
+  const reasons: string[] = [];
+  if (model.reader === "user" && page.kind !== "reference" && /git clone/i.test(content)) {
+    reasons.push("Tells a product user to clone the repository.");
+  }
+  if (page.kind === "guide" && content.trim().length < 40) {
+    reasons.push("The page does not explain the job.");
+  }
+  if (page.kind !== "home" && !page.question) {
+    reasons.push("The page does not answer a question.");
+  }
+  return reasons;
+}
+
 export function readSourcePaths(content: string): string[] {
   const match = content.match(/<!--\s*sources:\s*([^>]+?)\s*-->/);
   if (!match) return [];
@@ -193,7 +278,7 @@ export function withSources(content: string, sources: string[]): string {
   return `${cleaned}\n\n<!-- sources: ${uniqueSources.join(" ")} -->`;
 }
 
-function apiPages(facts: RepoFacts, tree: Set<string>): PlannedPage[] {
+function apiPages(facts: RepoFacts, tree: Set<string>, reader: PlannedPage["reader"]): PlannedPage[] {
   if (facts.routes.length === 0) return [];
   const groups = new Map<string, HttpRoute[]>();
   for (const route of facts.routes) {
@@ -216,6 +301,8 @@ function apiPages(facts: RepoFacts, tree: Set<string>): PlannedPage[] {
         navOrder: 40,
         kind: "api",
         audience: facts.audience,
+        reader,
+        question: "Which endpoints can I call?",
         sourcePaths: sourcesFor(facts.routes),
         routes: facts.routes,
       },
@@ -231,6 +318,8 @@ function apiPages(facts: RepoFacts, tree: Set<string>): PlannedPage[] {
       navOrder: 40,
       kind: "api",
       audience: facts.audience,
+      reader,
+      question: "Which endpoints can I call?",
       sourcePaths: sourcesFor(facts.routes).slice(0, 4),
       routes: facts.routes,
     },
@@ -249,6 +338,8 @@ function apiPages(facts: RepoFacts, tree: Set<string>): PlannedPage[] {
       navOrder: order,
       kind: "api",
       audience: facts.audience,
+      reader,
+      question: `Which endpoints live under ${key}?`,
       sourcePaths: sourcesFor(routes),
       routes,
     });
@@ -269,14 +360,11 @@ export function factualPageContent(
       .filter((line) => line && !line.startsWith("#"))
       .slice(0, 2)
       .join(" ");
-    blocks.push(facts.packageDescription ?? (excerpt || `${page.title} documentation.`));
-    if (facts.routes.length > 0) {
+    blocks.push(page.description || facts.packageDescription || excerpt || `${page.title} documentation.`);
+    if (page.reader === "integrator" && facts.routes.length > 0) {
       blocks.push(`## What you can call\n\n${facts.routes.slice(0, 8).map((route) => `- \`${route.method} ${route.path}\``).join("\n")}`);
     }
-    if (facts.scripts.length > 0) {
-      blocks.push(`## Scripts\n\n${facts.scripts.slice(0, 8).map((script) => `- \`${script.name}\`: \`${script.command}\``).join("\n")}`);
-    }
-  } else if (page.slug === "getting-started") {
+  } else if (page.slug === "getting-started" && page.reader === "integrator") {
     blocks.push("## Steps");
     const steps: string[] = [];
     if (repoFullName) steps.push(`Clone the repository.\n\n\`\`\`bash\ngit clone https://github.com/${repoFullName}.git\ncd ${repoFullName.split("/")[1] ?? repoFullName}\n\`\`\``);
@@ -331,12 +419,6 @@ function titleFromPackage(name: string): string {
 function titleFromSegment(key: string): string {
   if (key === "root") return "API routes";
   return titleFromPackage(key);
-}
-
-function setupDescription(facts: RepoFacts): string {
-  if (facts.audience === "cli") return "Install the CLI and run the first command.";
-  if (facts.audience === "library") return "Install the package and make the first call.";
-  return "Clone, configure, and run the app locally.";
 }
 
 function unique(values: string[]): string[] {

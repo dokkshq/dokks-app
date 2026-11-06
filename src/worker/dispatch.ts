@@ -8,19 +8,28 @@ import { draftFromGeneration, type PageDraft } from "@/lib/copilot/contract";
 import {
   DEFAULT_FIRST_BUILD_CAP_USD,
 } from "@/lib/copilot/caps";
-import { estimateCostUsd, ratesFromEnv, reserveTokens, reserveTokensForKind } from "@/lib/copilot/cost";
+import {
+  estimateCostUsd,
+  holdUsdForKind,
+  ratesFromEnv,
+  reserveTokens,
+  reserveTokensForKind,
+} from "@/lib/copilot/cost";
+import { runAgentLoop, type AgentEvent } from "@/lib/copilot/agent-loop";
 import { extractFacts } from "@/lib/copilot/facts";
 import { generateRepoSummary } from "@/lib/copilot/generate";
 import { runChatPipeline, runFirstBuildPipeline, runPushPipeline } from "@/lib/copilot/pipeline";
 import { taskSizeForJob } from "@/lib/copilot/models";
 import {
   releaseUsage,
+  releaseUsageForJob,
   reserveDailySpend,
   finalizeUsage,
 } from "@/lib/copilot/reserve";
 import { resolveProvider } from "@/lib/copilot/providers";
 import { assertCredits } from "@/lib/credits/apply";
 import { getPrisma } from "@/lib/db";
+import { GithubRateLimitError } from "@/lib/github/api-error";
 import { createInstallationToken } from "@/lib/github/installation-token";
 import {
   readRepoChange,
@@ -96,7 +105,7 @@ export async function runJob(
     await prisma.job.updateMany({
       where: { id: jobId, status: "RUNNING", lockedBy: config.workerId },
       data: {
-        provider: provider.id.toUpperCase() as "XAI" | "GROQ" | "FAKE",
+        provider: provider.id === "fake" ? "FAKE" : "XAI",
         model: provider.model,
       },
     });
@@ -107,9 +116,17 @@ export async function runJob(
     const rates =
       provider.id === "fake"
         ? { inputUsdPerMillion: 0, outputUsdPerMillion: 0 }
-        : ratesFromEnv(multiStage ? "xai" : provider.id, process.env);
+        : ratesFromEnv(process.env);
     const reserve = multiStage ? reserveTokensForKind(loaded.kind) : reserveTokens(task);
-    const estimateUsd = estimateCostUsd(reserve, rates);
+    const tokenEstimateUsd = estimateCostUsd(reserve, rates);
+    const estimateUsd =
+      loaded.kind === "FIRST_BUILD" ||
+      loaded.kind === "PUSH_UPDATE" ||
+      loaded.kind === "CHAT_EDIT" ||
+      loaded.kind === "SUMMARY_REFRESH"
+        ? holdUsdForKind(loaded.kind, tokenEstimateUsd)
+        : tokenEstimateUsd;
+    await releaseUsageForJob(jobId);
     const reservation = await reserveDailySpend({
       repoId: repo.id,
       estimateUsd,
@@ -119,13 +136,21 @@ export async function runJob(
         DEFAULT_GLOBAL_DAILY_CAP_USD,
       ),
       firstBuildCapUsd: readCap(process.env.FIRST_BUILD_CAP_USD, DEFAULT_FIRST_BUILD_CAP_USD),
-      provider: provider.id.toUpperCase() as "XAI" | "GROQ" | "FAKE",
+      provider: provider.id === "fake" ? "FAKE" : "XAI",
       model: provider.model,
       jobId,
       jobKind: loaded.kind,
     });
     if (!reservation.allowed) {
-      throw new PermanentJobError("Try again later.");
+      const cap =
+        reservation.reason === "global_daily_cap"
+          ? readCap(process.env.GLOBAL_DAILY_CAP_USD, DEFAULT_GLOBAL_DAILY_CAP_USD)
+          : loaded.kind === "FIRST_BUILD"
+            ? readCap(process.env.FIRST_BUILD_CAP_USD, DEFAULT_FIRST_BUILD_CAP_USD)
+            : readCap(process.env.REPO_DAILY_CAP_USD, DEFAULT_REPO_DAILY_CAP_USD);
+      throw new PermanentJobError(
+        `This build needs about $${estimateUsd.toFixed(2)}, which is over today's $${cap.toFixed(2)} spend cap. Try again tomorrow.`,
+      );
     }
     usageId = reservation.usageId;
 
@@ -222,8 +247,8 @@ async function runFirstBuild(args: {
   await progress(args.job.id, args.config, {
     phase: JobPhase.READING_REPO,
     progress: 10,
-    message: "Reading repository",
-    detail: "Reading routes, schema, scripts, and source files",
+    message: "Reading the product",
+    detail: "Looking at screens, actions, and anything a person can call.",
   });
   const snapshot = await repoCall(() =>
     readRepoSnapshot({
@@ -234,13 +259,43 @@ async function runFirstBuild(args: {
     }),
   );
   const facts = extractFacts(snapshot);
+  await assertOwnership(args.job.id, args.config.workerId);
+  const existingPages = await loadSiteDrafts(args.siteId);
+  const prior = await priorWork(args.job.id);
+  const agent = await runAgentLoop({
+    model: resolveProvider("heavy", process.env),
+    goal: withPriorWork(
+      "Write the documentation for this product. Read the repository until you know what a person can do. Write an overview, a guide for each real job, and a reference only for things a person looks up. Then finish with a short summary of what you published.",
+      prior,
+    ),
+    siteName: args.siteName,
+    files: snapshot.files,
+    treePaths: snapshot.treePaths,
+    pages: existingPages,
+    maxSteps: 24,
+    onEvent: (event) => logAgentEvent(args.job.id, event),
+  }).catch(() => null);
+  if (agent?.pages.some((page) => page.slug === "")) {
+    await finalize(args.usageId, agent);
+    await publish(
+      args,
+      {
+        pages: agent.pages.map(draftFromGeneration),
+        removedSlugs: [],
+        changeNote: agent.reply,
+        source: "FIRST_BUILD",
+        baseSha: snapshot.sha,
+      },
+      agent.reply,
+    );
+    return;
+  }
   await progress(args.job.id, args.config, {
     phase: JobPhase.GENERATING,
     progress: 35,
-    message: "Writing pages",
-    detail: `${facts.routes.length} routes, ${facts.envVars.length} env vars`,
+    message: "Writing the docs",
+    detail: generatedWaitDetail(facts),
   });
-  await assertOwnership(args.job.id, args.config.workerId);
   const generated = await runFirstBuildPipeline({
     heavy: resolveProvider("heavy", process.env),
     small: resolveProvider("small", process.env),
@@ -426,7 +481,6 @@ async function runChatEdit(args: {
   });
   const focus = args.pageId ? pages.find((page) => page.id === args.pageId) : null;
   if (args.pageId && !focus) throw new PermanentJobError("That page no longer exists.");
-  if (pages.length === 0) throw new PermanentJobError("This site has no pages to edit.");
   const repo = await prisma.repo.findUnique({
     where: { id: args.job.repoId },
     include: { installation: true },
@@ -451,13 +505,59 @@ async function runChatEdit(args: {
       if (!/\b(401|403|404)\b/.test(message)) throw new TransientJobError(message);
     }
   }
-  await progress(args.job.id, args.config, {
-    phase: JobPhase.GENERATING,
-    progress: 35,
-    message: "Editing pages",
-    detail: "Applying your instruction",
-  });
-  const generated = await runChatPipeline({
+  const drafts = pages.map((page) => ({
+    slug: page.slug,
+    section: page.section,
+    title: page.title,
+    description: page.description,
+    navOrder: page.navOrder,
+    content: page.content,
+  }));
+  const agent = await runAgentLoop({
+    model: resolveProvider("heavy", process.env),
+    goal: withPriorWork(args.instruction, await priorWork(args.job.id)),
+    siteName: args.siteName,
+    files,
+    treePaths,
+    pages: drafts,
+    maxSteps: 16,
+    onEvent: (event) => logAgentEvent(args.job.id, event),
+  }).catch(() => null);
+  const changed = agent
+    ? agent.pages.some((page) => drafts.find((item) => item.slug === page.slug)?.content !== page.content || !drafts.some((item) => item.slug === page.slug))
+    : false;
+  if (agent?.finished && !changed) {
+    await finalize(args.usageId, agent);
+    const usage = await jobUsageTotals(args.job.id);
+    await logJobEvent({
+      jobId: args.job.id,
+      message: agent.reply,
+      phase: JobPhase.COMPLETE,
+      progress: 100,
+      detail: "Answered",
+      metadata: { role: "reply" },
+    });
+    await finishJob({
+      jobId: args.job.id,
+      workerId: args.config.workerId,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      estimatedCostUsd: usage.estimatedCostUsd,
+      successMessage: "Answered",
+    });
+    return;
+  }
+  const generated = agent && changed
+    ? {
+        pages: agent.pages.filter((page) => {
+          const prior = drafts.find((item) => item.slug === page.slug);
+          return !prior || prior.content !== page.content || prior.title !== page.title;
+        }),
+        removedSlugs: [] as string[],
+        changeNote: agent.reply,
+        usage: agent,
+      }
+    : await runChatPipeline({
     heavy: resolveProvider("heavy", process.env),
     small: resolveProvider("small", process.env),
     siteName: args.siteName,
@@ -481,12 +581,14 @@ async function runChatEdit(args: {
     throw new PermanentJobError("The edit did not return any pages.");
   }
   const usage = await jobUsageTotals(args.job.id);
-  await progress(args.job.id, args.config, {
-    phase: JobPhase.PUBLISHING,
-    progress: 80,
-    message: "Preparing your edit",
-    detail: "This edit will wait for your approval",
-  });
+  if (!(agent && changed)) {
+    await progress(args.job.id, args.config, {
+      phase: JobPhase.PUBLISHING,
+      progress: 80,
+      message: "Preparing your edit",
+      detail: "This edit will wait for your approval",
+    });
+  }
   const site = await prisma.site.findUnique({
     where: { id: args.siteId },
     select: { reviewMode: true },
@@ -504,9 +606,11 @@ async function runChatEdit(args: {
     changeNote: generated.changeNote,
   });
   const message =
-    applied.pending > 0
-      ? "Your edit is ready for review."
-      : "The edit did not change the page.";
+    agent && changed && agent.reply
+      ? agent.reply
+      : applied.pending > 0
+        ? "Your edit is ready for review."
+        : "The edit did not change the page.";
   await logJobEvent({
     jobId: args.job.id,
     level: "info",
@@ -514,6 +618,7 @@ async function runChatEdit(args: {
     phase: JobPhase.COMPLETE,
     progress: 100,
     detail: message,
+    metadata: { role: "reply" },
   });
   await finishJob({
     jobId: args.job.id,
@@ -605,6 +710,7 @@ async function publish(
     source: "FIRST_BUILD" | "PUSH_UPDATE";
     baseSha: string | null;
   },
+  reply?: string,
 ) {
   const usage = await jobUsageTotals(args.job.id);
   await progress(args.job.id, args.config, {
@@ -640,13 +746,14 @@ async function publish(
     throw error;
   });
   const message =
-    args.reviewMode === "REVIEW" && applied.pending > 0
+    reply ||
+    (args.reviewMode === "REVIEW" && applied.pending > 0
       ? "Changes are ready for review."
       : applied.published > 0
         ? `Published ${applied.published} page${applied.published === 1 ? "" : "s"}.`
         : applied.skipped > 0
           ? "No pages changed. Hand edited pages were skipped."
-          : "No pages changed.";
+          : "No pages changed.");
   await logJobEvent({
     jobId: args.job.id,
     message,
@@ -654,6 +761,7 @@ async function publish(
     progress: 100,
     detail: message,
     metadata: {
+      role: "reply",
       published: applied.published,
       pending: applied.pending,
       skipped: applied.skipped,
@@ -710,6 +818,55 @@ async function finalize(
   });
 }
 
+async function priorWork(jobId: string): Promise<string> {
+  const prisma = getPrisma();
+  if (!prisma) return "";
+  const events = await prisma.jobEvent.findMany({
+    where: { jobId },
+    orderBy: { sequence: "asc" },
+    take: 40,
+    select: { message: true },
+  });
+  return events.map((event) => event.message).filter(Boolean).join("\n");
+}
+
+function withPriorWork(goal: string, prior: string): string {
+  if (!prior.trim()) return goal;
+  return `${goal}\n\nYou already did this work. Continue from here. Do not repeat finished steps.\n${prior}`;
+}
+
+async function loadSiteDrafts(siteId: string) {
+  const prisma = getPrisma();
+  if (!prisma) return [];
+  const pages = await prisma.page.findMany({
+    where: { siteId },
+    orderBy: { navOrder: "asc" },
+    select: {
+      slug: true,
+      section: true,
+      title: true,
+      description: true,
+      navOrder: true,
+      content: true,
+    },
+  });
+  return pages;
+}
+
+async function logAgentEvent(jobId: string, event: AgentEvent): Promise<void> {
+  await logJobEvent({
+    jobId,
+    message: event.message,
+    metadata: {
+      role: event.role,
+      body: event.body,
+      explored: event.explored,
+      searches: event.searches,
+      edited: event.edited,
+    },
+  });
+}
+
 async function progress(
   jobId: string,
   config: WorkerConfig,
@@ -721,8 +878,16 @@ async function progress(
     phase: input.phase,
     progress: input.progress,
     detail: input.detail,
+    metadata: { role: "thought", body: input.detail },
   });
   await assertOwnership(jobId, config.workerId);
+}
+
+function generatedWaitDetail(facts: { routes: unknown[]; envVars: unknown[] }): string {
+  const parts = [];
+  if (facts.routes.length > 0) parts.push(`${facts.routes.length} endpoints`);
+  if (facts.envVars.length > 0) parts.push(`${facts.envVars.length} settings`);
+  return parts.length > 0 ? `Using ${parts.join(" and ")} from the repository.` : "Planning the pages from the product.";
 }
 
 async function installationToken(installationId: string): Promise<string> {
@@ -735,6 +900,9 @@ async function repoCall<T>(call: () => Promise<T>): Promise<T> {
     return await call();
   } catch (error) {
     const message = safeErrorMessage(error);
+    if (error instanceof GithubRateLimitError) {
+      throw new TransientJobError(message);
+    }
     if (/\b(401|403|404)\b/.test(message)) {
       throw new PermanentJobError(message);
     }

@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { marketingUrl } from "@/lib/brand";
 import { normalizeEmail } from "@/lib/auth/login-code";
 import { isBootstrapAdmin } from "@/lib/beta/admins";
 import { findBetaAccessEmails } from "@/lib/beta/access";
@@ -51,7 +52,7 @@ export default async function ApplicationsPage({
     <>
       <PageHeader
         title="Applications"
-        description="Applications from opentip.tech. Approving grants beta access and sends one access email. Rejecting revokes access."
+        description={`Applications from ${new URL(marketingUrl()).host}. Approving grants beta access and sends one access email. Rejecting revokes access.`}
       />
       <ApplicationNotice params={params} />
 
@@ -81,7 +82,7 @@ export default async function ApplicationsPage({
         <Empty className="border border-border bg-card">
           <EmptyHeader>
             <EmptyTitle>No applications yet</EmptyTitle>
-            <EmptyDescription>New applications from opentip.tech will appear here.</EmptyDescription>
+            <EmptyDescription>New applications from {new URL(marketingUrl()).host} will appear here.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : null}

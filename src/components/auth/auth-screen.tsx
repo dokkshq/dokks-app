@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { OpentipMark } from "@/components/brand/logo";
+import { BrandMark } from "@/components/brand/logo";
 import { ResendCode } from "@/components/auth/resend-code";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +28,7 @@ export function AuthScreen({
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-16">
       <div className="flex w-full max-w-sm flex-col gap-6">
-        <OpentipMark />
+        <BrandMark />
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl tracking-tight">{title}</h1>
           <p className="text-sm leading-6 text-muted-foreground">{subtitle}</p>
@@ -94,7 +94,7 @@ export function CodeScreen({
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-16">
       <div className="flex w-full max-w-sm flex-col gap-6">
-        <OpentipMark />
+        <BrandMark />
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl tracking-tight">Enter your code</h1>
           <p className="text-sm leading-6 text-muted-foreground">

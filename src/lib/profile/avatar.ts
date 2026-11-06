@@ -1,3 +1,5 @@
+import { publicAssetUrl } from "@/lib/media/public-url";
+
 export function initialsFor(name: string | null, login: string): string {
   const source = (name ?? "").trim() || login.trim();
   const parts = source.split(/\s+/).filter(Boolean);
@@ -10,5 +12,5 @@ export function avatarFor(user: {
   imageUrl?: string | null;
   avatarUrl?: string | null;
 }): string | null {
-  return user.imageUrl || user.avatarUrl || null;
+  return publicAssetUrl(user.imageUrl) || user.avatarUrl || null;
 }

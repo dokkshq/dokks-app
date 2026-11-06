@@ -1,3 +1,4 @@
+import { productName } from "@/lib/brand";
 import { appUrl } from "@/lib/config";
 import { emailPreferenceLinks } from "@/lib/email/preferences";
 import { renderEmail } from "@/lib/email/render";
@@ -19,7 +20,7 @@ export async function sendBetaInviteEmail(args: {
   );
   return sendEmail({
     to: [args.to],
-    subject: "You're invited to the Opentip beta",
+    subject: `You're invited to the ${productName()} beta`,
     html: rendered.html,
     text: rendered.text,
     tags: [{ name: "type", value: "beta-invite" }],
@@ -38,7 +39,7 @@ export async function sendBetaApprovalEmail(args: {
   );
   return sendEmail({
     to: [args.to],
-    subject: "You're in: Opentip beta",
+    subject: `You're in: ${productName()} beta`,
     html: rendered.html,
     text: rendered.text,
     tags: [{ name: "type", value: "beta-approval" }],

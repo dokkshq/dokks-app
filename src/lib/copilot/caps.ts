@@ -80,7 +80,7 @@ export function readCap(value: string | undefined, fallback: number): number {
 
 export const DEFAULT_REPO_DAILY_CAP_USD = 2;
 export const DEFAULT_GLOBAL_DAILY_CAP_USD = 25;
-export const DEFAULT_FIRST_BUILD_CAP_USD = 2;
+export const DEFAULT_FIRST_BUILD_CAP_USD = 8;
 
 export function spendDecision(input: {
   jobKind: "FIRST_BUILD" | "OTHER";

@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { productName } from "@/lib/brand";
 import { appUrl } from "@/lib/config";
 import type { EmailDelivery, EmailEnv } from "@/lib/email/transport";
 import { renderEmail } from "@/lib/email/render";
@@ -38,8 +39,8 @@ export async function sendLoginCodeEmail(args: {
     to: [args.to],
     subject:
       purpose === "email-change"
-        ? "Confirm your new Opentip email"
-        : "Your Opentip sign-in code",
+        ? `Confirm your new ${productName()} email`
+        : `Your ${productName()} sign-in code`,
     html: rendered.html,
     text: rendered.text,
     tags: [{ name: "type", value: purpose === "email-change" ? "email-change" : "login-code" }],

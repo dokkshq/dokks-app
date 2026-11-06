@@ -91,22 +91,37 @@ function SignOutItem() {
   );
 }
 
-export function UserMenu({ user }: { user: MenuUser }) {
+export function UserMenu({
+  user,
+  side = "bottom",
+  align = "end",
+  fullWidth = false,
+}: {
+  user: MenuUser;
+  side?: "top" | "bottom";
+  align?: "start" | "center" | "end";
+  fullWidth?: boolean;
+}) {
   const avatar = user.imageUrl || user.avatarUrl || "";
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="ghost" className="h-9 gap-2 px-1.5 pr-3">
+          <Button
+            variant="ghost"
+            className={cn("h-9 gap-2 px-1.5", fullWidth ? "w-full justify-start pr-2" : "pr-3")}
+          >
             <Avatar size="sm">
               {avatar ? <AvatarImage src={avatar} alt="" /> : null}
               <AvatarFallback>{initialsFor(user.name, user.login)}</AvatarFallback>
             </Avatar>
-            <span className="max-w-32 truncate text-sm">{user.name || user.login}</span>
+            <span className={cn("truncate text-sm", fullWidth ? "min-w-0 flex-1 text-left" : "max-w-32")}>
+              {user.name || user.login}
+            </span>
           </Button>
         }
       />
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align={align} side={side} className="w-56">
         <DropdownMenuGroup>
           <DropdownMenuLabel>{user.name || user.login}</DropdownMenuLabel>
         </DropdownMenuGroup>

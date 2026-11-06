@@ -86,7 +86,6 @@ enum RevisionAction {
 
 enum JobProvider {
   XAI
-  GROQ
   FAKE
 }
 
@@ -201,8 +200,8 @@ model Repo {
 
 model Site {
   id                 String     @id @default(cuid())
-  repoId             String     @unique
-  repo               Repo       @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  repoId             String?    @unique
+  repo               Repo?      @relation(fields: [repoId], references: [id], onDelete: Cascade)
   ownerId            String
   owner              User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   name               String

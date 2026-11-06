@@ -1,8 +1,8 @@
-# Opentip app spec
+# Dokks app spec
 
 Status: 25 Oct 2026. This file is the source of truth for OpentipHQ/opentip-app. Update it when a decision changes.
 
-Opentip is a hosted docs and Changelog platform. Opentip Copilot writes docs for a GitHub repo and updates them on every push through one GitHub App. The GitHub App is named Opentip Copilot because the name Opentip is reserved by another account. Its slug is `opentip-copilot`. The install URL is https://github.com/apps/opentip-copilot/installations/new. The beta app is served at beta.opentip.tech. The marketing site stays at opentip.tech in the other repository.
+Dokks is a hosted docs and Changelog platform. The name in the product is `NEXT_PUBLIC_PRODUCT_NAME`. The app origin is `APP_URL`. Docs are served on `{subdomain}.{DOCS_ROOT_DOMAIN}`. The marketing site is `NEXT_PUBLIC_MARKETING_URL`. The GitHub App slug is `GITHUB_APP_SLUG`. Those values are read from the environment. They are not defaults in code.
 
 The word for money a person sends a project is tip. The only assets are ETH and USDC. Tipping itself is out of scope until a later phase. Do not invent brand facts that are not in this file or in the product decisions below.
 
@@ -27,9 +27,15 @@ Elijah still has to:
 
 - Register the GitHub App on the OpentipHQ org as Opentip Copilot, slug `opentip-copilot`. The name Opentip is reserved. Sign-in and push updates use the same app. Install URL: https://github.com/apps/opentip-copilot/installations/new. See GITHUB_APP_SETUP.md. Override the slug with `GITHUB_APP_SLUG` only if GitHub assigns a different one.
 - Create a separate Neon database for this app (Free plan). It becomes the production database at launch. Do not reuse the marketing site database.
-- Add xAI, Groq, and Resend keys.
+- Add xAI and Resend keys.
 
-Beta access is sent by email. The beta app is beta.opentip.tech. Email is branded HTML with a plain-text version. Transactional email covers sign-in codes, email-change codes, beta invites, beta approvals, and internal spend alerts. Announcements are product email and respect a signed opt-out link and one-click unsubscribe. There is no invented support or reply-to address.
+Beta access is sent by email. The beta app origin is `APP_URL`. Email is branded HTML with a plain-text version. Transactional email covers sign-in codes, email-change codes, beta invites, beta approvals, and internal spend alerts. Announcements are product email and respect a signed opt-out link and one-click unsubscribe. There is no invented support or reply-to address.
+
+### Workspace entry (implemented)
+
+- Primary path: create an empty workspace (`Site.repoId` null), open Preview & chat, use the empty-state Import repository dialog to attach a GitHub repo, then watch `JobEvent` progress in the agent panel.
+- Standalone `/dashboard/import` can still create a site with a repo; it redirects into `/dashboard/w/:subdomain` chat, not the old per-job build page.
+- Builds list and chat always surface a failure reason from `Job.error`, error events, or `detail`.
 
 ### Phase 2, docs engine and Copilot (implemented)
 
@@ -41,7 +47,7 @@ Beta access is sent by email. The beta app is beta.opentip.tech. Email is brande
 - Uninstall or a removed repo pauses the site and, in that phase, emails the owner. This foundation already pauses the site. The email is not sent yet.
 - Repo renamed, moved, or archived. The webhook handler records the rename and pauses on archive, delete, or transfer.
 - Webhooks that fail or arrive twice. Signature checks, a delivery id claim, and a job idempotency key are in this foundation. A failed claim is released so GitHub can retry.
-- Private repos are supported. Code is sent to xAI and Groq. That is covered in the Privacy policy. Private docs behind sign-in are a later paid feature, still undecided for the first paid plans.
+- Private repos are supported. Code is sent to xAI. That is covered in the Privacy policy. Private docs behind sign-in are a later paid feature, still undecided for the first paid plans.
 
 This repository now has the durable worker, job leases and retries, `JobEvent` progress, curated repo reading, `PageRevision` review and approval, the build progress page, and Chat edit. Deployment steps are in `docs/WORKER_DEPLOYMENT.md`.
 
@@ -52,7 +58,7 @@ This repository now has the durable worker, job leases and retries, `JobEvent` p
 - Branding, the way Mintlify does it: logo light and dark, favicon, primary color, theme.
 - Dynamic signed OG image per page, 1200 by 630, cached. Reference checked 23 Oct 2026: docs.shieldhq.xyz. The image shows the logo, section, title, and description on a light field with a hairline grid and a soft tint of the site color.
 - OG overrides, in increasing control: own background (logo, title, and description stay), one image for the whole site, one image for a page.
-- Floating "Built with Opentip" pill in a bottom corner. It opens https://opentip.tech.
+- Floating "Built with {NEXT_PUBLIC_PRODUCT_NAME}" pill in a bottom corner. It opens `NEXT_PUBLIC_MARKETING_URL`.
 - Free subdomains. Custom domains with automatic HTTPS and status messages are not on Free.
 - Sitemap and robots.txt per site.
 - Canonical link from the subdomain to the custom domain once the custom domain is active.
@@ -122,9 +128,9 @@ App chrome, separate from customer sites:
 Decided 23 Oct 2026.
 
 - Heavy jobs (first full build, large chat edits over 2,000 characters): xAI `grok-build-0.1`. `grok-4.7` is a config option only, via `XAI_HEAVY_MODEL`. It is not the default.
-- Small jobs (push updates, smaller edits): Groq `openai/gpt-oss-120b` on the paid Developer plan. Override with `GROQ_SMALL_MODEL`.
-- One provider layer: `resolveProvider`. Missing keys use a fake provider in development and tests. Production fails closed.
-- Fake completions cost 0, so local preview does not burn the cap. Real calls use internal USD estimates (`XAI_*_USD_PER_MTOK`, `GROQ_*_USD_PER_MTOK`). Those estimates are for caps, not an invoice. Unset xAI prices default to $1 per million input tokens and $2 per million output tokens, the grok-build-0.1 list prices.
+- Small jobs (push updates, smaller edits): xAI `grok-build-0.1`. Override with `XAI_SMALL_MODEL`.
+- One provider layer: `resolveProvider`. A missing xAI key uses a fake provider in development and tests. Production fails closed.
+- Fake completions cost 0, so local preview does not burn the cap. Real calls use internal USD estimates (`XAI_*_USD_PER_MTOK`). Those estimates are for caps, not an invoice. Unset prices default to $1 per million input tokens and $2 per million output tokens, the grok-build-0.1 list prices.
 - Before a job runs, reserve an estimate (heavy: 20k prompt and 8k completion tokens, small: 4k and 1.5k). Reject the job when the reserve would pass the per-repo daily cap or the global daily cap.
 - Default caps: $2 per repo per day, $25 global per day. Both are UTC days and are env-configurable.
 - The database path sums `UsageEntry` rows inside a serializable transaction (`reserveDailySpend`) so two jobs cannot both pass a cap they would share.
@@ -150,7 +156,7 @@ Decided 23 Oct 2026.
 - Site management at `/dashboard/sites/[id]`, build progress at `/dashboard/sites/[id]/builds/[jobId]`, revision review at `/dashboard/sites/[id]/revisions/[revisionId]`, and Chat edit at `/dashboard/sites/[id]/chat`. The build page polls every 2 seconds and shows stage and `JobEvent` activity without prompts or spend. Owners can retry a terminal failed job from its build page.
 - Dashboard: Import, Sites, Changelog, Usage, Billing, and Profile. No credit or token figures on those pages.
 - Admin: applications with approve, reject, and resend access email, user search and detail with suspend and unsuspend, read-only act-as with a banner, AI usage and cost per user, jobs with live refresh and retry, plans plus manual credits, feedback, invites in waves of up to 50, GitHub installs plus webhook errors, honest empty ETH and USDC tip cards, announcements with optional email that respects opt-outs, spend alerts with dedupe and a protected cron route, and an activity log. Admin Reset is not built. Tips are read-only. Takedown tools are not built.
-- Public docs on `{subdomain}.opentip.tech` and on `{subdomain}.{APP_HOST}` (so `ledger.beta.opentip.tech` works during beta). Custom domains rewrite to the same renderer.
+- Public docs on `{subdomain}.{DOCS_ROOT_DOMAIN}` and on `{subdomain}.{APP_URL host}` during beta. Custom domains rewrite to the same renderer.
 - Per-site branding, Ledger and Minimal, the corner pill, signed OG images, sitemap, robots.txt, canonical tags, noindex when paused or `Page.noindex`.
 - Local preview site at `/sites/sample` when `DATABASE_URL` is unset.
 - `AUTH_DEV_BYPASS=1` opens the dashboard in development only. Production ignores it.
