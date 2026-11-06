@@ -9,7 +9,7 @@ export function buildRepoDigest(snapshot: RepoSnapshot, maxChars: number): strin
   if (snapshot.omittedFiles > 0) {
     parts.push(`Files not read: ${snapshot.omittedFiles}`);
   }
-  parts.push("", "File tree:", snapshot.treePaths.slice(0, 400).join("\n"));
+  parts.push("", "File tree:", snapshot.treePaths.slice(0, 2_000).join("\n"));
   const symbols = exportedSymbols(snapshot.files);
   if (symbols.length > 0) {
     parts.push("", "Exported symbols:", symbols.join("\n"));
@@ -51,7 +51,7 @@ export function buildChangeDigest(change: RepoChange, maxChars: number): string 
     `Removed paths: ${change.removedPaths.length}`,
   ];
   if (change.changedPaths.length > 0 && !change.fallback) {
-    parts.push("", "Changed:", change.changedPaths.slice(0, 120).join("\n"));
+    parts.push("", "Changed:", change.changedPaths.slice(0, 400).join("\n"));
   }
   if (change.removedPaths.length > 0) {
     parts.push("", "Removed:", change.removedPaths.slice(0, 100).join("\n"));

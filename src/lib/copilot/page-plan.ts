@@ -1,9 +1,11 @@
+import { layoutForSection, type PageLayout } from "@/lib/copilot/components";
 import { normalizeSlug, type PageDraft } from "@/lib/copilot/contract";
 import type { Audience, HttpRoute, RepoFacts } from "@/lib/copilot/facts";
+import { MAX_PLANNED_PAGES, WRITER_SOURCE_PATHS } from "@/lib/copilot/limits";
 import type { ProductModel } from "@/lib/copilot/product-model";
 import { buildProductModel } from "@/lib/copilot/product-model";
 import { extractProductSurface, type ProductSurface } from "@/lib/copilot/product-surface";
-import type { RepoSnapshot } from "@/lib/github/repo-content";
+import { isDomainModule, type RepoSnapshot } from "@/lib/github/repo-content";
 
 export type PageKind = "home" | "guide" | "concept" | "api" | "reference";
 
@@ -14,6 +16,7 @@ export type PlannedPage = {
   description: string;
   navOrder: number;
   kind: PageKind;
+  layout: PageLayout;
   audience: Audience;
   reader: "user" | "integrator";
   question: string;
@@ -21,7 +24,7 @@ export type PlannedPage = {
   routes: HttpRoute[];
 };
 
-const MAX_PAGES = 12;
+const MAX_PAGES = MAX_PLANNED_PAGES;
 
 export function planPagesFromFacts(input: {
   facts: RepoFacts;
@@ -50,115 +53,116 @@ export function planPagesFromProduct(input: {
     const name = path.split("/").pop() ?? "";
     return name === "package.json" || name.endsWith(".env.example") || name === "schema.prisma";
   });
+  const domain = input.treePaths.filter((path) => tree.has(path) && isDomainModule(path));
   const reader = model.reader;
+  const sources = (...groups: string[][]) => unique(groups.flat()).slice(0, WRITER_SOURCE_PATHS);
 
-  pages.push({
+  const add = (page: PlannedPage) => {
+    if (pages.length >= MAX_PAGES) return;
+    if (pages.some((item) => item.slug === page.slug)) return;
+    pages.push(page);
+  };
+
+  add({
     slug: "",
-    section: "Introduction",
+    section: "Get Started",
     title: facts.packageName ? titleFromPackage(facts.packageName) : "Overview",
-    description: model.promise || facts.packageDescription || "What this product does.",
+    description: (model.promise || facts.packageDescription || "What this product does.").slice(0, 280),
     navOrder: 0,
     kind: "home",
+    layout: "overview",
     audience: facts.audience,
     reader,
     question: "What is this?",
-    sourcePaths: unique([...readme, ...manifest.slice(0, 2), ...input.surface.screens.slice(0, 1).map((screen) => screen.source)]),
+    sourcePaths: sources(readme, domain, manifest),
     routes: [],
   });
 
-  let order = 10;
-  for (const job of model.jobs) {
-    if (pages.length >= MAX_PAGES) break;
-    if (pages.some((page) => page.slug === job.slug)) continue;
-    const sources = job.evidence.filter((path) => tree.has(path)).slice(0, 8);
-    if (sources.length === 0 && job.slug !== "getting-started") continue;
-    pages.push({
-      slug: job.slug,
-      section: "Guides",
-      title: job.title,
-      description: job.question,
-      navOrder: order,
-      kind: "guide",
-      audience: facts.audience,
-      reader,
-      question: job.question,
-      sourcePaths: sources.length > 0 ? sources : unique([...readme, ...manifest]).slice(0, 4),
-      routes: [],
-    });
-    order += 1;
-  }
+  add({
+    slug: "getting-started",
+    section: "Get Started",
+    title: "Getting started",
+    description: reader === "user" ? "The first thing to do in the product." : "Install it and run the first command.",
+    navOrder: 10,
+    kind: "guide",
+    layout: "get-started",
+    audience: facts.audience,
+    reader,
+    question: reader === "user" ? "How do I start using this?" : "How do I install this?",
+    sourcePaths: sources(readme, manifest, domain),
+    routes: [],
+  });
 
-  for (const noun of model.nouns) {
-    if (pages.length >= MAX_PAGES) break;
-    if (pages.some((page) => page.slug === noun.slug || page.title.toLowerCase() === noun.name.toLowerCase())) continue;
-    const sources = noun.evidence.filter((path) => tree.has(path)).slice(0, 6);
-    if (sources.length === 0) continue;
-    pages.push({
-      slug: noun.slug,
-      section: "Concepts",
-      title: noun.name,
-      description: `What ${noun.name} means in this product.`,
-      navOrder: order,
-      kind: "concept",
+  if (input.surface.errors.length > 0) {
+    add({
+      slug: "troubleshooting",
+      section: "How-to",
+      title: "Troubleshooting",
+      description: "Errors the product actually reports.",
+      navOrder: 30,
+      kind: "guide",
+      layout: "troubleshooting",
       audience: facts.audience,
       reader,
-      question: `What is ${noun.name}?`,
-      sourcePaths: sources,
+      question: "What do I do when something fails?",
+      sourcePaths: sources(input.surface.errors.map((error) => error.source)),
       routes: [],
     });
-    order += 1;
   }
 
   if (reader === "integrator" && (facts.envVars.length > 0 || facts.schemaModels.length > 0)) {
-    pages.push({
+    add({
       slug: "configuration",
       section: "Reference",
       title: "Configuration",
       description: "Settings required to run or call this product.",
       navOrder: 80,
       kind: "reference",
+      layout: "reference",
       audience: facts.audience,
       reader,
       question: "Which settings does this require?",
-      sourcePaths: unique(manifest.filter((path) => path.endsWith(".env.example") || path.endsWith("schema.prisma") || path.endsWith("package.json"))),
+      sourcePaths: sources(manifest.filter((path) => path.endsWith(".env.example") || path.endsWith("schema.prisma") || path.endsWith("package.json"))),
       routes: [],
     });
   }
 
   if (reader === "integrator" && (facts.audience === "library" || input.surface.kind === "library")) {
-    pages.push({
+    add({
       slug: "reference",
       section: "Reference",
       title: "Reference",
       description: "Exports and entry points.",
       navOrder: 81,
       kind: "reference",
+      layout: "reference",
       audience: facts.audience,
       reader,
       question: "What can I import?",
-      sourcePaths: unique([...facts.entryPoints, facts.packageMain].filter((path): path is string => Boolean(path && tree.has(path)))).slice(0, 8),
+      sourcePaths: sources([...facts.entryPoints, facts.packageMain].filter((path): path is string => Boolean(path && tree.has(path)))),
       routes: [],
     });
   }
 
   if (input.surface.kind === "cli" || facts.binaries.length > 0) {
-    pages.push({
+    add({
       slug: "commands",
       section: "Reference",
       title: "Commands",
       description: "Commands this tool actually ships.",
       navOrder: 82,
       kind: "reference",
+      layout: "reference",
       audience: "cli",
       reader,
       question: "Which commands can I run?",
-      sourcePaths: unique([...manifest, ...facts.binaries, ...facts.entryPoints].filter((path) => tree.has(path))).slice(0, 8),
+      sourcePaths: sources([...manifest, ...facts.binaries, ...facts.entryPoints].filter((path) => tree.has(path))),
       routes: [],
     });
   }
 
   if (reader === "integrator") {
-    pages.push(...apiPages(facts, tree, reader));
+    for (const page of apiPages(facts, tree, reader, MAX_PAGES - pages.length)) add(page);
   }
 
   return pages.filter((page) => page.slug !== "" || page.kind === "home").slice(0, MAX_PAGES);
@@ -178,7 +182,7 @@ export function mergePagePlan(input: {
     if (bySlug.has(slug)) {
       const current = bySlug.get(slug)!;
       const extra = (raw.sourcePaths ?? []).filter((path) => tree.has(path));
-      current.sourcePaths = unique([...current.sourcePaths, ...extra]).slice(0, 8);
+      current.sourcePaths = unique([...current.sourcePaths, ...extra]).slice(0, WRITER_SOURCE_PATHS);
       if (
         typeof raw.description === "string" &&
         raw.description.trim() &&
@@ -191,19 +195,22 @@ export function mergePagePlan(input: {
     if (bySlug.size >= MAX_PAGES) continue;
     const title = typeof raw.title === "string" ? raw.title.trim().slice(0, 120) : "";
     if (!title) continue;
-    const sources = (raw.sourcePaths ?? []).filter((path) => tree.has(path)).slice(0, 8);
+    const sources = (raw.sourcePaths ?? []).filter((path) => tree.has(path)).slice(0, WRITER_SOURCE_PATHS);
     if (sources.length === 0 && slug !== "") continue;
     const kind = raw.kind === "api" || raw.kind === "guide" || raw.kind === "concept" || raw.kind === "reference" || raw.kind === "home"
       ? raw.kind
       : "guide";
     if (input.base[0]?.reader === "user" && (kind === "api" || slug.startsWith("api-reference"))) continue;
+    const section = kind === "api" || kind === "reference" ? "Reference" : kind === "concept" ? "Concepts" : kind === "home" ? "Get Started" : "How-to";
+    const layout = raw.layout ?? layoutForSection(section, slug);
     bySlug.set(slug, {
       slug,
-      section: kind === "api" || kind === "reference" ? "Reference" : kind === "concept" ? "Concepts" : "Guides",
+      section,
       title,
       description: typeof raw.description === "string" ? raw.description.trim().slice(0, 280) : "",
       navOrder: typeof raw.navOrder === "number" ? raw.navOrder : 50 + bySlug.size,
       kind,
+      layout: kind === "api" ? "reference" : layout,
       audience: input.facts.audience,
       reader: input.base[0]?.reader ?? "integrator",
       question: typeof raw.description === "string" ? raw.description.trim().slice(0, 200) : title,
@@ -273,12 +280,12 @@ export function readSourcePaths(content: string): string[] {
 
 export function withSources(content: string, sources: string[]): string {
   const cleaned = content.replace(/\n*<!--\s*sources:[\s\S]*?-->\s*$/m, "").trim();
-  const uniqueSources = unique(sources).slice(0, 12);
+  const uniqueSources = unique(sources).slice(0, WRITER_SOURCE_PATHS);
   if (uniqueSources.length === 0) return cleaned;
   return `${cleaned}\n\n<!-- sources: ${uniqueSources.join(" ")} -->`;
 }
 
-function apiPages(facts: RepoFacts, tree: Set<string>, reader: PlannedPage["reader"]): PlannedPage[] {
+function apiPages(facts: RepoFacts, tree: Set<string>, reader: PlannedPage["reader"], budget: number): PlannedPage[] {
   if (facts.routes.length === 0) return [];
   const groups = new Map<string, HttpRoute[]>();
   for (const route of facts.routes) {
@@ -289,9 +296,11 @@ function apiPages(facts: RepoFacts, tree: Set<string>, reader: PlannedPage["read
     groups.set(key, list);
   }
   const sourcesFor = (routes: HttpRoute[]) =>
-    unique(routes.map((route) => route.source)).filter((path) => tree.has(path)).slice(0, 8);
+    unique(routes.map((route) => route.source)).filter((path) => tree.has(path)).slice(0, WRITER_SOURCE_PATHS);
 
-  if (facts.routes.length <= 12 || groups.size <= 1) {
+  if (budget <= 0) return [];
+
+  if (facts.routes.length <= 12 || groups.size <= 1 || budget < 2) {
     return [
       {
         slug: "api-reference",
@@ -300,6 +309,7 @@ function apiPages(facts: RepoFacts, tree: Set<string>, reader: PlannedPage["read
         description: "HTTP routes exported by this repository.",
         navOrder: 40,
         kind: "api",
+        layout: "reference",
         audience: facts.audience,
         reader,
         question: "Which endpoints can I call?",
@@ -317,17 +327,18 @@ function apiPages(facts: RepoFacts, tree: Set<string>, reader: PlannedPage["read
       description: "HTTP routes exported by this repository.",
       navOrder: 40,
       kind: "api",
+      layout: "reference",
       audience: facts.audience,
       reader,
       question: "Which endpoints can I call?",
-      sourcePaths: sourcesFor(facts.routes).slice(0, 4),
+      sourcePaths: sourcesFor(facts.routes),
       routes: facts.routes,
     },
   ];
   const entries = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   let order = 41;
   for (const [key, routes] of entries) {
-    if (pages.length >= 8) break;
+    if (pages.length >= budget) break;
     const slug = normalizeSlug(`api-reference/${key}`);
     if (!slug) continue;
     pages.push({
@@ -337,6 +348,7 @@ function apiPages(facts: RepoFacts, tree: Set<string>, reader: PlannedPage["read
       description: `Routes under /${routes[0]?.path.split("/").filter(Boolean).slice(0, 2).join("/") ?? key}.`,
       navOrder: order,
       kind: "api",
+      layout: "reference",
       audience: facts.audience,
       reader,
       question: `Which endpoints live under ${key}?`,
@@ -364,6 +376,8 @@ export function factualPageContent(
     if (page.reader === "integrator" && facts.routes.length > 0) {
       blocks.push(`## What you can call\n\n${facts.routes.slice(0, 8).map((route) => `- \`${route.method} ${route.path}\``).join("\n")}`);
     }
+  } else if (page.slug === "getting-started" && page.reader === "user") {
+    blocks.push(page.description || facts.packageDescription || "Start in the product.");
   } else if (page.slug === "getting-started" && page.reader === "integrator") {
     blocks.push("## Steps");
     const steps: string[] = [];

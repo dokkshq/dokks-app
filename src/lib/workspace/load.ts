@@ -1,6 +1,7 @@
 import { docsRootDomain } from "@/lib/config";
 import { getPrisma } from "@/lib/db";
 import type { Session } from "@/lib/session";
+import { readStoredPlan } from "@/lib/copilot/plan-gate";
 import type { WorkspaceJob } from "@/lib/workspace/jobs";
 
 export type { WorkspaceJob, WorkspaceJobEvent } from "@/lib/workspace/jobs";
@@ -159,6 +160,7 @@ export async function loadWorkspaceActivity(
       error: true,
       createdAt: true,
       finishedAt: true,
+      payload: true,
       events: {
         orderBy: { sequence: "asc" },
         take: 120,
@@ -183,6 +185,7 @@ export async function loadWorkspaceActivity(
     error: job.error,
     createdAt: job.createdAt.toISOString(),
     finishedAt: job.finishedAt?.toISOString() ?? null,
+    plan: planView(job.payload),
     events: job.events.map((event) => ({
       id: event.id,
       sequence: event.sequence,
@@ -292,6 +295,7 @@ export async function loadWorkspace(
           error: true,
           createdAt: true,
           finishedAt: true,
+          payload: true,
           events: {
             orderBy: { sequence: "asc" },
             take: 120,
@@ -317,6 +321,7 @@ export async function loadWorkspace(
     error: job.error,
     createdAt: job.createdAt.toISOString(),
     finishedAt: job.finishedAt?.toISOString() ?? null,
+    plan: planView(job.payload),
     events: job.events.map((event) => ({
       id: event.id,
       sequence: event.sequence,
@@ -390,6 +395,23 @@ export async function loadWorkspace(
       body: entry.body,
       publishedAt: entry.publishedAt.toISOString(),
       source: entry.source,
+    })),
+  };
+}
+
+function planView(payload: unknown) {
+  const stored = readStoredPlan(payload);
+  if (!stored) return null;
+  return {
+    coverage: stored.coverage || null,
+    productRoot: stored.productRoot,
+    products: stored.products,
+    pages: stored.pages.map((page) => ({
+      slug: page.slug,
+      title: page.title,
+      section: page.section,
+      description: page.description,
+      layout: page.layout,
     })),
   };
 }

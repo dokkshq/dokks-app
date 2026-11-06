@@ -64,7 +64,7 @@ const snapshot = {
 };
 
 describe("content ranking", () => {
-  it("reads routes, manifests, and schema before prose, planning notes, and .github", () => {
+  it("reads the README before manifests, and ranks domain modules with manifests ahead of routes", () => {
     const selected = selectContentCandidates([
       ".github/workflows/ci.yml",
       "ROADMAP.md",
@@ -75,16 +75,18 @@ describe("content ranking", () => {
       "prisma/schema.prisma",
       "src/index.ts",
     ]);
-    expect(selected.slice(0, 4)).toEqual([
+    expect(selected.slice(0, 5)).toEqual([
+      "README.md",
       "package.json",
       "prisma/schema.prisma",
-      "src/app/api/users/route.ts",
       "src/index.ts",
+      "src/app/api/users/route.ts",
     ]);
-    expect(selected.indexOf("README.md")).toBeLessThan(selected.indexOf("docs/guide.md"));
-    expect(selected.indexOf("docs/guide.md")).toBeLessThan(selected.indexOf("ROADMAP.md"));
-    expect(selected.indexOf("ROADMAP.md")).toBeLessThan(selected.indexOf(".github/workflows/ci.yml"));
-    expect(contentRank("src/app/api/health/route.ts")).toBeLessThan(contentRank("README.md"));
+    expect(selected.indexOf("README.md")).toBeLessThan(selected.indexOf("package.json"));
+    expect(selected.indexOf("package.json")).toBeLessThan(selected.indexOf("src/app/api/users/route.ts"));
+    expect(contentRank("README.md")).toBeLessThan(contentRank("package.json"));
+    expect(contentRank("package.json")).toBe(contentRank("src/lib/search.ts"));
+    expect(contentRank("package.json")).toBeLessThan(contentRank("src/app/api/health/route.ts"));
     expect(contentRank("README.md")).toBeLessThan(contentRank("ROADMAP.md"));
   });
 });

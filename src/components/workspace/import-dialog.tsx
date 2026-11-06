@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, GitBranch, Lock, Plus, Search } from "lucide-react";
 import { attachRepositoryAction } from "@/app/(product)/dashboard/actions";
 import { productName } from "@/lib/brand";
@@ -49,16 +49,18 @@ export function WorkspaceImportDialog({
   const router = useRouter();
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState(view.query);
+  const [seenDefaultOpen, setSeenDefaultOpen] = useState(defaultOpen);
+  const [seenQuery, setSeenQuery] = useState(view.query);
+  if (defaultOpen !== seenDefaultOpen) {
+    setSeenDefaultOpen(defaultOpen);
+    setOpen(defaultOpen);
+  }
+  if (view.query !== seenQuery) {
+    setSeenQuery(view.query);
+    setQuery(view.query);
+  }
   const base = `/dashboard/w/${subdomain}`;
   const selected = view.accounts.find((account) => account.id === view.selectedAccountId) ?? null;
-
-  useEffect(() => {
-    setOpen(defaultOpen);
-  }, [defaultOpen]);
-
-  useEffect(() => {
-    setQuery(view.query);
-  }, [view.query]);
 
   const hrefFor = (overrides: { account?: string; q?: string; page?: number }) => {
     const params = new URLSearchParams();

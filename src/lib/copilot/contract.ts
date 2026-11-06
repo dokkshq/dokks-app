@@ -1,3 +1,12 @@
+import {
+  MAX_CONTENT_LENGTH,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_PLANNED_PAGES,
+  MAX_SECTION_LENGTH,
+  MAX_SLUG_LENGTH,
+  MAX_TITLE_LENGTH,
+} from "@/lib/copilot/limits";
+
 export type PageDraft = {
   slug: string;
   section: string | null;
@@ -19,12 +28,7 @@ export type ParseOptions = {
   requireHome?: boolean;
 };
 
-const MAX_SLUG_LENGTH = 120;
-const MAX_TITLE_LENGTH = 120;
-const MAX_DESCRIPTION_LENGTH = 280;
-const MAX_SECTION_LENGTH = 80;
-const MAX_CONTENT_LENGTH = 100_000;
-const MAX_PAGES = 20;
+const MAX_PAGES = MAX_PLANNED_PAGES;
 
 const RESERVED_SLUGS = new Set([
   "api",

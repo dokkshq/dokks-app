@@ -5,10 +5,13 @@ import {
 } from "@/lib/sites/publish";
 
 describe("publish rules", () => {
-  it("publishes generated updates only in auto mode", () => {
+  it("leaves generated docs as a draft, including auto mode", () => {
     expect(
       shouldPublishImmediately({ reviewMode: "AUTO_PUBLISH", source: "FIRST_BUILD" }),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      shouldPublishImmediately({ reviewMode: "AUTO_PUBLISH", source: "PUSH_UPDATE" }),
+    ).toBe(false);
     expect(
       shouldPublishImmediately({ reviewMode: "REVIEW", source: "FIRST_BUILD" }),
     ).toBe(false);

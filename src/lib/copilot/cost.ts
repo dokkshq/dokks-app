@@ -47,8 +47,10 @@ export function reserveTokens(task: "heavy" | "small"): {
   return { prompt: 4_000, completion: 1_500 };
 }
 
+import { PIPELINE_COST_CEILING_USD } from "@/lib/copilot/limits";
+
 /** Matches the pipeline stop line. The daily cap hold must stay under the first-build cap. */
-export const PIPELINE_COST_CEILING_USD = 6;
+export { PIPELINE_COST_CEILING_USD };
 
 export function reserveTokensForKind(
   kind: "FIRST_BUILD" | "PUSH_UPDATE" | "CHAT_EDIT" | "SUMMARY_REFRESH",

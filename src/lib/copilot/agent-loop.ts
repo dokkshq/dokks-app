@@ -1,6 +1,7 @@
 import { productName } from "@/lib/brand";
 import { parseModelJson, normalizeSlug, type PageDraft } from "@/lib/copilot/contract";
 import { PIPELINE_COST_CEILING_USD } from "@/lib/copilot/cost";
+import { AGENT_MEMORY_NOTES, AGENT_READ_FILE_CHARS, AGENT_SEARCH_HITS, AGENT_STEP_TOKENS } from "@/lib/copilot/limits";
 import type { CompletionResult, CopilotProvider } from "@/lib/copilot/providers";
 
 export type AgentTool = "list_tree" | "search" | "read_file" | "read_pages" | "write_page" | "finish";
@@ -36,6 +37,8 @@ export async function runAgentLoop(args: {
   pages: PageDraft[];
   maxSteps: number;
   costCeilingUsd?: number;
+  /** Page writes, including a home page, stay off until a plan is approved. */
+  planApproved?: boolean;
   onEvent?: (event: AgentEvent) => Promise<void> | void;
 }): Promise<AgentLoopResult> {
   const ceiling = args.costCeilingUsd ?? PIPELINE_COST_CEILING_USD;
@@ -57,7 +60,7 @@ export async function runAgentLoop(args: {
         pageCount: drafts.size,
         notes,
       }),
-      maxTokens: 1_200,
+      maxTokens: AGENT_STEP_TOKENS,
     });
     addUsage(usage, completion);
     const seconds = Math.max(1, Math.round((Date.now() - started) / 1000));
@@ -81,6 +84,7 @@ export async function runAgentLoop(args: {
       files: args.files,
       treePaths: args.treePaths,
       drafts,
+      planApproved: args.planApproved === true,
     });
     await args.onEvent?.({
       role: "action",
@@ -90,7 +94,7 @@ export async function runAgentLoop(args: {
       edited: outcome.edited,
     });
     notes.push(`Tool ${parsed.tool}: ${outcome.observation}`);
-    if (notes.length > 8) notes.shift();
+    if (notes.length > AGENT_MEMORY_NOTES) notes.shift();
   }
 
   if (!finished) {
@@ -126,7 +130,8 @@ function systemPrompt(): string {
     "read_pages input: {} to list pages, or {\"slug\":\"getting-started\"} to read one. Use an empty slug for the home page.",
     "write_page input: {\"slug\":\"guides/start\",\"title\":\"Get started\",\"section\":\"Guides\",\"description\":\"How to start\",\"content\":\"markdown\"}.",
     "finish input: {\"reply\":\"the message the user should read\"}.",
-    "Read before you answer. Call write_page only when the docs should change.",
+    "Read before you answer. Call write_page only after the site owner approves a plan.",
+    "Do not publish. A home page is written only after that approval.",
     "Do not invent screens, buttons, or endpoints you have not read.",
   ].join(" ");
 }
@@ -173,7 +178,7 @@ function readStep(text: string): { thought: string; say: string; tool: AgentTool
 function runTool(
   tool: AgentTool,
   input: Record<string, unknown>,
-  ctx: { files: AgentFile[]; treePaths: string[]; drafts: Map<string, PageDraft> },
+  ctx: { files: AgentFile[]; treePaths: string[]; drafts: Map<string, PageDraft>; planApproved: boolean },
 ): { label: string; observation: string; explored?: number; searches?: number; edited?: number } {
   if (tool === "list_tree") {
     const paths = ctx.treePaths.slice(0, 200);
@@ -192,7 +197,7 @@ function runTool(
         if (!query || `${page.title}\n${page.content}`.toLowerCase().includes(query)) {
           hits.push(`${page.slug || "(home)"}: ${page.title}`);
         }
-        if (hits.length >= 20) break;
+        if (hits.length >= AGENT_SEARCH_HITS) break;
       }
     } else {
       for (const file of ctx.files) {
@@ -201,9 +206,9 @@ function runTool(
           if (query && lines[index]?.toLowerCase().includes(query)) {
             hits.push(`${file.path}:${index + 1}: ${lines[index]?.trim().slice(0, 160)}`);
           }
-          if (hits.length >= 20) break;
+          if (hits.length >= AGENT_SEARCH_HITS) break;
         }
-        if (hits.length >= 20) break;
+        if (hits.length >= AGENT_SEARCH_HITS) break;
       }
     }
     return {
@@ -219,7 +224,7 @@ function runTool(
     return {
       label: "Explored 1 file",
       explored: 1,
-      observation: file ? file.content.slice(0, 8_000) : `File not found: ${path}`,
+      observation: file ? file.content.slice(0, AGENT_READ_FILE_CHARS) : `File not found: ${path}`,
     };
   }
   if (tool === "read_pages") {
@@ -238,6 +243,13 @@ function runTool(
     };
   }
   if (tool === "write_page") {
+    if (!ctx.planApproved) {
+      return {
+        label: "Edited 0 pages",
+        edited: 0,
+        observation: "Page writes wait until the site owner approves a plan. Nothing was published.",
+      };
+    }
     const written = writePage(input, ctx.drafts);
     return {
       label: written ? "Edited 1 page" : "Edited 0 pages",
