@@ -253,6 +253,8 @@ export async function sendChatEditAction(formData: FormData) {
       "Import a repository before chatting.",
     );
   }
+  // Captured before the transaction. Property narrowing does not survive the closure.
+  const repoId = site.repoId;
   const credits = await assertCredits(session.userId);
   if (!credits.ok) {
     return redirectWithToast(
@@ -294,7 +296,7 @@ export async function sendChatEditAction(formData: FormData) {
     });
     const created = await tx.job.create({
       data: {
-        repoId: site.repoId,
+        repoId,
         kind: "CHAT_EDIT",
         status: "QUEUED",
         provider: "XAI",
