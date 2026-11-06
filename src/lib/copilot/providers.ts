@@ -1,4 +1,5 @@
 import { estimateCostUsd, ratesFromEnv, type RateCard } from "@/lib/copilot/cost";
+import { jobAbortSignal, jobStoppedError } from "@/lib/copilot/job-abort";
 import {
   selectModel,
   type ProviderId,
@@ -49,22 +50,30 @@ async function completeChat(args: {
   rates: RateCard;
   timeoutMs: number;
 }): Promise<CompletionResult> {
-  const response = await fetch(args.url, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${args.apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: args.model,
-      messages: [
-        { role: "system", content: args.request.system },
-        { role: "user", content: args.request.user },
-      ],
-      ...(args.request.maxTokens ? { max_tokens: args.request.maxTokens } : {}),
-    }),
-    signal: AbortSignal.timeout(args.timeoutMs),
-  });
+  const stop = jobAbortSignal();
+  if (stop?.aborted) throw jobStoppedError();
+  let response: Response;
+  try {
+    response = await fetch(args.url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${args.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: args.model,
+        messages: [
+          { role: "system", content: args.request.system },
+          { role: "user", content: args.request.user },
+        ],
+        ...(args.request.maxTokens ? { max_tokens: args.request.maxTokens } : {}),
+      }),
+      signal: stop ? AbortSignal.any([AbortSignal.timeout(args.timeoutMs), stop]) : AbortSignal.timeout(args.timeoutMs),
+    });
+  } catch (error) {
+    if (stop?.aborted) throw jobStoppedError();
+    throw error;
+  }
   if (!response.ok) {
     const detail = (await response.text()).replace(/\s+/g, " ").trim().slice(0, 180);
     throw new Error(
@@ -97,6 +106,7 @@ export function createFakeProvider(task: TaskSize, model: string): CopilotProvid
     model,
     task,
     async complete(request) {
+      if (jobAbortSignal()?.aborted) throw jobStoppedError();
       const wantsJson = request.system.includes("JSON shape");
       const rawSlug = /^Page slug: (.*)$/m.exec(request.user)?.[1]?.trim() ?? "";
       const slug = rawSlug === "(home)" ? "" : rawSlug;

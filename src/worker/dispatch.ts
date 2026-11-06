@@ -29,6 +29,7 @@ import {
   reserveDailySpend,
   finalizeUsage,
 } from "@/lib/copilot/reserve";
+import { runWithJobAbort } from "@/lib/copilot/job-abort";
 import { resolveProvider } from "@/lib/copilot/providers";
 import { assertCredits } from "@/lib/credits/apply";
 import { getPrisma } from "@/lib/db";
@@ -99,9 +100,22 @@ export async function runJob(
     void heartbeat(jobId, config.workerId, config.leaseMs).catch(() => undefined);
   }, config.heartbeatMs);
   heartbeatTimer.unref?.();
+  const abort = new AbortController();
+  const watchCancellation = () => {
+    void prisma.job
+      .findUnique({ where: { id: jobId }, select: { status: true, lockedBy: true } })
+      .then((job) => {
+        if (!job || job.status !== "RUNNING" || job.lockedBy !== config.workerId) abort.abort();
+      })
+      .catch(() => undefined);
+  };
+  watchCancellation();
+  const cancelWatch = setInterval(watchCancellation, 1000);
+  cancelWatch.unref?.();
 
   let usageId: string | undefined;
   try {
+    await runWithJobAbort(abort.signal, async () => {
     const instruction =
       loaded.kind === "CHAT_EDIT" ? loaded.chatEdit?.instruction ?? "" : undefined;
     const task = taskSizeForJob(loaded.kind, instruction);
@@ -225,11 +239,13 @@ export async function runJob(
     }
 
     throw new PermanentJobError("This job type is not supported.");
+    });
   } catch (error) {
     await releaseUsage(usageId).catch(() => undefined);
     throw error;
   } finally {
     clearInterval(heartbeatTimer);
+    clearInterval(cancelWatch);
   }
 }
 

@@ -11,6 +11,7 @@ import { ProfileStorageUnconfigured } from "@/lib/profile/storage";
 import { BrandImageError, deleteSiteBrandImage, uploadSiteBrandImage } from "@/lib/sites/brand-storage";
 import { redirectWithToast } from "@/lib/toast-server";
 import { retryWorkspaceBuild } from "@/lib/workspace/retry-build";
+import { stopSiteAgent } from "@/lib/workspace/stop-agent";
 
 function pathFor(subdomain: string, section = "") {
   return `/dashboard/w/${subdomain}${section}`;
@@ -49,6 +50,16 @@ export async function retryBuildAction(formData: FormData) {
         : back;
   if (!result.ok) return redirectWithToast(destination, "error", result.error);
   return redirectWithToast(destination, "success", "Build queued again.");
+}
+
+export async function stopWorkspaceAgentAction(formData: FormData) {
+  const session = await getViewSession();
+  const siteId = String(formData.get("siteId") ?? "");
+  if (!session || !siteId) return false;
+  await blockActAsWrites();
+  const result = await stopSiteAgent({ siteId, ownerId: session.userId });
+  if (result.ok) revalidatePath(pathFor(result.subdomain));
+  return result.ok;
 }
 
 export async function publishDraftAction(formData: FormData) {

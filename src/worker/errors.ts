@@ -21,6 +21,9 @@ export function classifyJobError(error: unknown): {
   if (error instanceof PermanentJobError) {
     return { message: error.message, permanent: true };
   }
+  if (error instanceof Error && error.name === "JobStoppedError") {
+    return { message: "Stopped.", permanent: true };
+  }
   if (error instanceof TransientJobError) {
     return { message: error.message, permanent: false };
   }

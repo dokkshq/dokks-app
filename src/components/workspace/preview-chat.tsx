@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowUp, GitBranch, LoaderCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowUp, GitBranch, LoaderCircle, Square } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { SelectField } from "@/components/ui/select";
@@ -9,7 +9,7 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { WorkspaceImportDialog } from "@/components/workspace/import-dialog";
 import { sendChatEditAction } from "@/app/(product)/dashboard/sites/[id]/actions";
 import { PlanApproval } from "@/components/workspace/plan-approval";
-import { discardDraftAction, publishDraftAction, retryBuildAction } from "@/app/(product)/dashboard/w/[site]/actions";
+import { discardDraftAction, publishDraftAction, retryBuildAction, stopWorkspaceAgentAction } from "@/app/(product)/dashboard/w/[site]/actions";
 import type { ImportView } from "@/lib/import/types";
 import type { WorkspaceJob, WorkspaceJobEvent } from "@/lib/workspace/jobs";
 import { useWorkspaceChrome } from "@/components/workspace/shell";
@@ -58,17 +58,28 @@ export function PreviewChat({
   const back = `/dashboard/w/${subdomain}`;
   const router = useRouter();
   const threadRef = useRef<HTMLDivElement>(null);
+  const sendingRef = useRef(false);
+  const cancelAfterSend = useRef(false);
+  const stopHold = useRef(false);
+  const [sending, setSending] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [pendingChats, setPendingChats] = useState<Array<{ id: string; text: string; priorCount: number }>>([]);
   const [liveJobs, setLiveJobs] = useState(jobs);
   const [liveRunning, setLiveRunning] = useState(running);
   const [seenJobs, setSeenJobs] = useState(jobs);
   const [seenRunning, setSeenRunning] = useState(running);
   if (jobs !== seenJobs) {
     setSeenJobs(jobs);
-    setLiveJobs(jobs);
+    const stillActive = jobs.some((job) => job.status === "QUEUED" || job.status === "RUNNING");
+    if (!stopHold.current || !stillActive) {
+      stopHold.current = false;
+      setLiveJobs(jobs);
+    }
   }
   if (running !== seenRunning) {
     setSeenRunning(running);
-    setLiveRunning(running);
+    if (!stopHold.current) setLiveRunning(running);
   }
   const jobRunning =
     liveRunning || liveJobs.some((job) => job.status === "QUEUED" || job.status === "RUNNING");
@@ -86,7 +97,7 @@ export function PreviewChat({
     let stopped = false;
     const tick = async () => {
       const response = await fetch(`/api/workspaces/${subdomain}/activity`, { cache: "no-store" });
-      if (!response.ok || stopped) return;
+      if (!response.ok || stopped || stopHold.current) return;
       const body = (await response.json()) as { jobs?: WorkspaceJob[] };
       if (!body.jobs || stopped) return;
       const active = body.jobs.some((job) => job.status === "QUEUED" || job.status === "RUNNING");
@@ -105,10 +116,110 @@ export function PreviewChat({
   }, [hasRepo, liveRunning, router, subdomain]);
 
   useEffect(() => {
+    setPendingChats((items) =>
+      items.filter(
+        (item) => chats.filter((chat) => chat.instruction === item.text).length <= item.priorCount,
+      ),
+    );
+  }, [chats]);
+
+  useEffect(() => {
     const node = threadRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
-  }, [liveJobs, chats]);
+  }, [liveJobs, chats, pendingChats]);
+
+  function markStopped() {
+    const createdAt = new Date().toISOString();
+    stopHold.current = true;
+    setLiveRunning(false);
+    setLiveJobs((current) =>
+      current.map((job) => {
+        if (job.status !== "QUEUED" && job.status !== "RUNNING") return job;
+        return {
+          ...job,
+          status: "CANCELLED",
+          detail: "Stopped",
+          finishedAt: createdAt,
+          events: [
+            ...job.events,
+            {
+              id: `stop-${job.id}`,
+              sequence: (job.events.at(-1)?.sequence ?? 0) + 1,
+              level: "info",
+              message: "Stopped.",
+              createdAt,
+              role: "reply" as const,
+            },
+          ],
+        };
+      }),
+    );
+  }
+
+  function requestStop() {
+    const data = new FormData();
+    data.set("siteId", siteId);
+    return stopWorkspaceAgentAction(data).then(
+      (ok) => {
+        if (ok === false) stopHold.current = false;
+        router.refresh();
+      },
+      () => {
+        stopHold.current = false;
+        router.refresh();
+      },
+    );
+  }
+
+  function stop(event?: { preventDefault?: () => void }) {
+    event?.preventDefault?.();
+    cancelAfterSend.current = true;
+    if (!stopping) {
+      setStopping(true);
+      markStopped();
+      void requestStop().finally(() => setStopping(false));
+    }
+  }
+
+  function settleSend(text: string, id: string, error?: unknown) {
+    if (cancelAfterSend.current) {
+      cancelAfterSend.current = false;
+      void requestStop();
+    }
+    if (error && !isNextRedirect(error)) {
+      sendingRef.current = false;
+      setSending(false);
+      setDraft((current) => current || text);
+      setPendingChats((items) => items.filter((item) => item.id !== id));
+      return;
+    }
+    if (!error) {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  }
+
+  function send(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (jobRunning || sendingRef.current) return;
+    const text = draft.trim();
+    if (!text) return;
+    const data = new FormData(event.currentTarget);
+    data.set("instruction", text);
+    const id = crypto.randomUUID();
+    sendingRef.current = true;
+    setSending(true);
+    setDraft("");
+    setPendingChats((items) => [
+      ...items,
+      { id, text, priorCount: chats.filter((chat) => chat.instruction === text).length },
+    ]);
+    void sendChatEditAction(data).then(
+      () => settleSend(text, id),
+      (error: unknown) => settleSend(text, id, error),
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col">
@@ -205,7 +316,8 @@ export function PreviewChat({
             <AgentTranscript
               jobs={liveJobs}
               chats={chats}
-              running={jobRunning}
+              pending={pendingChats}
+              running={jobRunning || sending}
               repoFullName={hasRepo ? repoFullName : null}
               failedJob={shownJob?.status === "FAILED" ? shownJob : null}
               siteId={siteId}
@@ -245,7 +357,7 @@ export function PreviewChat({
             ) : null}
           </div>
           {canChat && !waitingPlan ? (
-            <form action={sendChatEditAction} className="p-3">
+            <form onSubmit={send} className="p-3">
               <input type="hidden" name="siteId" value={siteId} />
               <input type="hidden" name="returnTo" value={back} />
               <input type="hidden" name="pageId" value={page?.id ?? ""} />
@@ -255,6 +367,8 @@ export function PreviewChat({
                   name="instruction"
                   required
                   rows={3}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
                   placeholder="Ask a question or request a change"
                   className="w-full resize-none bg-transparent text-sm outline-none"
                 />
@@ -262,8 +376,14 @@ export function PreviewChat({
                   <span className="min-w-0 truncate text-xs text-muted-foreground">
                     {page ? `@ ${page.title}` : "@ docs"}
                   </span>
-                  <Button type="submit" size="icon-sm" aria-label={jobRunning ? "Working" : "Send"}>
-                    {jobRunning ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
+                  <Button
+                    type={jobRunning || sending || stopping ? "button" : "submit"}
+                    size="icon-sm"
+                    disabled={stopping || (!(jobRunning || sending) && draft.trim().length === 0)}
+                    onClick={jobRunning || sending || stopping ? stop : undefined}
+                    aria-label={jobRunning || sending || stopping ? "Stop" : "Send"}
+                  >
+                    {jobRunning || sending || stopping ? <Square className="size-3 fill-current" /> : <ArrowUp />}
                   </Button>
                 </div>
               </label>
@@ -282,6 +402,7 @@ export function PreviewChat({
 function AgentTranscript({
   jobs,
   chats,
+  pending,
   running,
   repoFullName,
   failedJob,
@@ -291,6 +412,7 @@ function AgentTranscript({
 }: {
   jobs: WorkspaceJob[];
   chats: Array<{ id: string; instruction: string; createdAt: string; status: string | null; error: string | null }>;
+  pending: Array<{ id: string; text: string }>;
   running: boolean;
   repoFullName: string | null;
   failedJob: WorkspaceJob | null;
@@ -327,10 +449,12 @@ function AgentTranscript({
     });
   }
   items.sort((a, b) => a.at.localeCompare(b.at));
-  if (items.length === 0 && !running) return null;
+  if (items.length === 0 && pending.length === 0 && !running) return null;
   return (
     <div className="flex flex-col gap-3">
-      {running && items.length === 0 ? <p className="text-sm text-muted-foreground">Waiting for the worker…</p> : null}
+      {running && items.length === 0 && pending.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Waiting for the worker…</p>
+      ) : null}
       {items.map((item) =>
         item.kind === "you" ? (
           <div key={item.id} className="flex flex-col gap-1">
@@ -342,6 +466,11 @@ function AgentTranscript({
           <AgentTurn key={item.id} job={item.job} live={running && (item.job.status === "QUEUED" || item.job.status === "RUNNING")} />
         ),
       )}
+      {pending.map((item) => (
+        <div key={item.id} className="rounded-2xl bg-muted px-3 py-2 text-sm">
+          {item.text}
+        </div>
+      ))}
       {failedJob ? (
         <form action={retryBuildAction}>
           <input type="hidden" name="siteId" value={siteId} />
@@ -373,10 +502,11 @@ function ImportMessage({ repo }: { repo: string }) {
 
 function AgentTurn({ job, live }: { job: WorkspaceJob; live: boolean }) {
   const failed = job.status === "FAILED";
+  const stopped = job.status === "CANCELLED";
   const [open, setOpen] = useState(live || failed);
   const start = Date.parse(job.events[0]?.createdAt ?? job.createdAt);
   const end = Date.parse(job.finishedAt ?? job.events.at(-1)?.createdAt ?? job.createdAt);
-  const label = live ? "Working…" : failed ? "Failed" : `Worked for ${formatDuration(end - start)}`;
+  const label = live ? "Working…" : failed ? "Failed" : stopped ? "Stopped" : `Worked for ${formatDuration(end - start)}`;
   return (
     <div className="flex flex-col gap-2">
       <button type="button" onClick={() => setOpen((value) => !value)} className="text-left text-sm text-muted-foreground">
@@ -407,6 +537,16 @@ function AgentStep({ event, live }: { event: WorkspaceJobEvent; live: boolean })
       </button>
       {open && event.body ? <p className="mt-1 pl-4 text-sm text-muted-foreground">{event.body}</p> : null}
     </div>
+  );
+}
+
+function isNextRedirect(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof error.digest === "string" &&
+    error.digest.startsWith("NEXT_REDIRECT")
   );
 }
 
