@@ -1,11 +1,12 @@
 import { batchPaths, chooseProductArea, coverageNote, detectProductAreas, inProductArea, mergeFacts } from "@/lib/copilot/batches";
+import { normalizePlanSection } from "@/lib/copilot/components";
 import { PIPELINE_COST_CEILING_USD } from "@/lib/copilot/cost";
 import { parseModelJson, type PageDraft } from "@/lib/copilot/contract";
 import { extractFacts, factsDigest, type RepoFacts } from "@/lib/copilot/facts";
 import { MAX_PLANNED_PAGES, MAX_SNAPSHOT_FILES, MAX_TREE_PATHS, WRITER_FILE_CHARS, WRITER_SOURCE_CHARS, WRITE_CONCURRENCY } from "@/lib/copilot/limits";
 import { pageQualityIssues } from "@/lib/copilot/review";
 import {
-  factualPageContent,
+  fillMissingPageSources,
   mergePagePlan,
   pagesAffectedByChange,
   planPagesFromFacts,
@@ -116,7 +117,12 @@ export async function runFirstBuildPipeline(args: {
     };
   }
   const model = buildProductModel(surface, facts);
-  const plan = args.approvedPlan.slice(0, MAX_PLANNED_PAGES);
+  const plan = fillMissingPageSources({
+    pages: args.approvedPlan.slice(0, MAX_PLANNED_PAGES),
+    treePaths: understood.paths,
+    facts,
+    files: understood.files,
+  });
   const drafts = await writePlan({
     plan,
     heavy: args.heavy,
@@ -218,7 +224,7 @@ export async function runPushPipeline(args: {
     if (planned.some((item) => item.slug === page.slug)) continue;
     planned.push({
       slug: page.slug,
-      section: page.section ?? "Guides",
+      section: normalizePlanSection(page.section),
       title: page.title,
       description: page.description ?? "",
       navOrder: page.navOrder,
@@ -292,7 +298,7 @@ export async function runChatPipeline(args: {
   const selected = targets.length > 0 ? targets : args.pages.filter((page) => page.slug === (args.focusSlug ?? "")).slice(0, 1);
   const plan: PlannedPage[] = (args.approvedPlan && args.approvedPlan.length > 0 ? args.approvedPlan : selected.map((page) => ({
     slug: page.slug,
-    section: normalizeChatSection(page.section),
+    section: normalizePlanSection(page.section),
     title: page.title,
     description: page.description ?? "",
     navOrder: page.navOrder,
@@ -342,8 +348,14 @@ export async function runChatPipeline(args: {
     readmePath: null,
     readmeExcerpt: "",
   };
+  const sourcedPlan = fillMissingPageSources({
+    pages: plan,
+    treePaths: args.treePaths,
+    facts: factsForWrite,
+    files: args.files,
+  });
   const drafts = await writePlan({
-    plan,
+    plan: sourcedPlan,
     heavy: args.heavy,
     small: args.small,
     siteName: args.siteName,
@@ -366,16 +378,9 @@ export async function runChatPipeline(args: {
     usage,
     verification,
     awaitingApproval: false,
-    plan,
+    plan: sourcedPlan,
     coverageNote: null,
   };
-}
-
-function normalizeChatSection(section: string | null): PlannedPage["section"] {
-  if (section === "Get Started" || section === "Concepts" || section === "How-to" || section === "Reference") return section;
-  if (section === "Concepts") return "Concepts";
-  if (section === "Reference") return "Reference";
-  return "How-to";
 }
 
 async function refineProductModel(
@@ -554,7 +559,8 @@ async function writePlan(args: {
     const stubbed = false;
     let title = page.title;
     let description = page.description;
-    let content = factualPageContent(page, args.facts, args.repoFullName).content;
+    let content = "";
+    let parsed: ReturnType<typeof readWrittenPage> = null;
     try {
       const completion = await args.heavy.complete(
         pageWriteRequest({
@@ -579,15 +585,24 @@ async function writePlan(args: {
         }),
       );
       addUsage(args.usage, `write:${page.slug || "home"}`, completion);
-      const parsed = readWrittenPage(completion.text);
-      if (parsed) {
-        title = parsed.title || title;
-        description = parsed.description || description;
-        content = parsed.content;
-      }
+      parsed = readWrittenPage(completion.text);
     } catch (error) {
       if (!isContractMiss(error)) throw error;
     }
+    if (!parsed) {
+      args.verification.push({
+        slug: page.slug,
+        violations: [],
+        rewritten: false,
+        stubbed: false,
+        unwritten: true,
+        reasons: ["The writer reply could not be parsed."],
+      });
+      return null;
+    }
+    title = parsed.title || title;
+    description = parsed.description || description;
+    content = parsed.content;
     let violations =
       args.verifyFacts === false ? [] : verifyPage(content, args.facts, args.treePaths);
     let reasons = [

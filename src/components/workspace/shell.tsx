@@ -65,7 +65,6 @@ export function WorkspaceShell({
     repo: string;
     host: string;
     status: "PENDING" | "ACTIVE" | "PAUSED";
-    reviewMode: "AUTO_PUBLISH" | "REVIEW";
     hasRepo?: boolean;
   };
   sites: SwitchSite[];
@@ -111,7 +110,7 @@ export function WorkspaceShell({
               {site.status === "ACTIVE" ? "Live" : site.status === "PAUSED" ? "Paused" : "Pending"}
             </span>
             <span className="hidden rounded-control border border-border px-2 py-1 text-xs text-muted-foreground lg:inline">
-              {site.reviewMode === "AUTO_PUBLISH" ? "Auto-publish" : "Review first"}
+              Draft
             </span>
           </div>
           <div className="flex items-center gap-2">

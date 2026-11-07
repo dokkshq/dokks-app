@@ -74,7 +74,7 @@ describe("repo import", () => {
     expect(rejected).toEqual({
       status: "invalid",
       field: "reviewMode",
-      message: "Choose auto-publish or review first.",
+      message: "Choose a publishing mode.",
     });
     const accepted = mockStore();
     await importRepo(accepted, input({ reviewMode: "review" }));

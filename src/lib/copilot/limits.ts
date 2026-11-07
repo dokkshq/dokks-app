@@ -17,6 +17,15 @@ export const GITHUB_REQUEST_TIMEOUT_MS = 20_000;
 export const WRITER_SOURCE_CHARS = 48_000;
 export const WRITER_FILE_CHARS = 24_000;
 export const WRITER_SOURCE_PATHS = 20;
+
+/**
+ * Output budget for one layout page (steps, fields, request/response, and the other blocks).
+ * At grok-build-0.1 rates ($1 input / $2 output per million), 20 full writes are about $0.24 of output.
+ */
+export const PAGE_WRITE_MAX_TOKENS = 6_000;
+/** Rewrite only corrects a page, so it stays under the write budget. */
+export const PAGE_REWRITE_MAX_TOKENS = 4_000;
+export const PAGE_CRITIQUE_MAX_TOKENS = 400;
 export const MAX_PLANNED_PAGES = 20;
 export const WRITE_CONCURRENCY = 4;
 

@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { createWorkspaceAction } from "@/app/(product)/dashboard/actions";
-import { brandPrimary, productName } from "@/lib/brand";
+import { brandPrimary } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -12,7 +12,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Radio, RadioGroup } from "@/components/ui/radio-group";
 import { SelectField } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -44,7 +43,6 @@ export function NewWorkspaceForm({ docsRoot }: { docsRoot: string }) {
   const [subdomain, setSubdomain] = useState("");
   const [subdomainTouched, setSubdomainTouched] = useState(false);
   const [primaryColor, setPrimaryColor] = useState(brandPrimary());
-  const [reviewMode, setReviewMode] = useState<"AUTO_PUBLISH" | "REVIEW">("AUTO_PUBLISH");
   const formError = state.error?.field === "form" ? state.error.message : undefined;
 
   useEffect(() => {
@@ -151,41 +149,12 @@ export function NewWorkspaceForm({ docsRoot }: { docsRoot: string }) {
         </Field>
       </div>
 
-      <Field data-invalid={Boolean(errorFor(state, "reviewMode"))}>
-        <FieldLabel>How should updates work?</FieldLabel>
-        <RadioGroup
-          name="reviewMode"
-          value={reviewMode}
-          onValueChange={(value) => {
-            if (value === "AUTO_PUBLISH" || value === "REVIEW") setReviewMode(value)
-          }}
-          className="grid gap-2"
-        >
-          <label className="cursor-pointer rounded-control border border-border p-3 has-data-checked:border-foreground has-data-checked:bg-muted/40">
-            <span className="flex items-start gap-3">
-              <Radio value="AUTO_PUBLISH" className="mt-1" />
-              <span>
-                <span className="block text-sm font-medium">Auto-publish updates</span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  When you push to GitHub, {productName()} updates your live docs automatically.
-                </span>
-              </span>
-            </span>
-          </label>
-          <label className="cursor-pointer rounded-control border border-border p-3 has-data-checked:border-foreground has-data-checked:bg-muted/40">
-            <span className="flex items-start gap-3">
-              <Radio value="REVIEW" className="mt-1" />
-              <span>
-                <span className="block text-sm font-medium">Review changes first</span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {productName()} prepares changes, and live docs stay unchanged until you approve them.
-                </span>
-              </span>
-            </span>
-          </label>
-        </RadioGroup>
-        <FieldError>{errorFor(state, "reviewMode")}</FieldError>
-      </Field>
+      <input type="hidden" name="reviewMode" value="REVIEW" />
+      <div className="flex items-center justify-between text-sm">
+        <span>Publishing</span>
+        <span>Draft</span>
+      </div>
+      <FieldError>{errorFor(state, "reviewMode")}</FieldError>
 
       {formError ? <FieldError>{formError}</FieldError> : null}
 

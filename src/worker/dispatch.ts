@@ -9,11 +9,13 @@ import {
   DEFAULT_FIRST_BUILD_CAP_USD,
 } from "@/lib/copilot/caps";
 import {
+  carryFinalizedSpend,
   estimateCostUsd,
   holdUsdForKind,
   ratesFromEnv,
   reserveTokens,
   reserveTokensForKind,
+  usageAfterCarry,
 } from "@/lib/copilot/cost";
 import { runAgentLoop, type AgentEvent } from "@/lib/copilot/agent-loop";
 import { chooseProductArea, detectProductAreas } from "@/lib/copilot/batches";
@@ -301,6 +303,7 @@ async function runFirstBuild(args: {
       message: "Writing the docs",
       detail: "Writing the approved outline.",
     });
+    const carriedUsd = carryFinalizedSpend((await jobUsageTotals(args.job.id)).estimatedCostUsd);
     const generated = await runFirstBuildPipeline({
       heavy: resolveProvider("heavy", process.env),
       small: resolveProvider("small", process.env),
@@ -310,8 +313,9 @@ async function runFirstBuild(args: {
       facts,
       approvedPlan: stored.pages,
       productRoot: stored.productRoot,
+      alreadySpentUsd: carriedUsd,
     });
-    await finalize(args.usageId, generated.usage);
+    await finalize(args.usageId, usageAfterCarry(generated.usage, carriedUsd));
     if (generated.pages.length === 0) {
       const usage = await jobUsageTotals(args.job.id);
       await logJobEvent({
@@ -350,6 +354,7 @@ async function runFirstBuild(args: {
     message: "Planning the outline",
     detail: "No pages are written until you approve the outline.",
   });
+  const carriedUsd = carryFinalizedSpend((await jobUsageTotals(args.job.id)).estimatedCostUsd);
   const generated = await runFirstBuildPipeline({
     heavy: resolveProvider("heavy", process.env),
     small: resolveProvider("small", process.env),
@@ -358,12 +363,13 @@ async function runFirstBuild(args: {
     snapshot,
     facts,
     productRoot: choice.area.root,
+    alreadySpentUsd: carriedUsd,
   });
   await parkForPlan({
     job: args.job,
     config: args.config,
     usageId: args.usageId,
-    usage: generated.usage,
+    usage: usageAfterCarry(generated.usage, carriedUsd),
     plan: generated.plan,
     coverage: generated.coverageNote,
     productRoot: choice.area.root,

@@ -69,7 +69,7 @@ export async function createWorkspaceAction(
       description: String(formData.get("description") ?? ""),
       theme: String(formData.get("theme") ?? "MINIMAL"),
       primaryColor: String(formData.get("primaryColor") ?? brandPrimary()),
-      reviewMode: String(formData.get("reviewMode") ?? "AUTO_PUBLISH"),
+      reviewMode: String(formData.get("reviewMode") ?? "REVIEW"),
     });
   } catch {
     return failure("form", "Could not create the workspace. Try again.");
@@ -161,7 +161,7 @@ export async function importRepository(
       description: String(formData.get("description") ?? ""),
       theme: String(formData.get("theme") ?? "MINIMAL"),
       primaryColor: String(formData.get("primaryColor") ?? brandPrimary()),
-      reviewMode: String(formData.get("reviewMode") ?? "AUTO_PUBLISH"),
+      reviewMode: String(formData.get("reviewMode") ?? "REVIEW"),
     });
   } catch {
     return failure("form", "Could not start the build. Try again.");

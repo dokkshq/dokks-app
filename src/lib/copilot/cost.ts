@@ -61,6 +61,31 @@ export function reserveTokensForKind(
   return reserveTokens("small");
 }
 
+/** Finalized job spend the next pipeline invocation must count toward the $6 ceiling. */
+export function carryFinalizedSpend(finalizedUsd: number): number {
+  if (!Number.isFinite(finalizedUsd) || finalizedUsd <= 0) return 0;
+  return roundUsd(finalizedUsd);
+}
+
+/**
+ * Usage stored on this invocation. The pipeline total includes carried spend so the
+ * ceiling can see it; the ledger row must stay incremental or the daily cap counts it twice.
+ */
+export function usageAfterCarry(
+  usage: { promptTokens: number; completionTokens: number; estimatedCostUsd: number },
+  carriedUsd: number,
+): { promptTokens: number; completionTokens: number; estimatedCostUsd: number } {
+  return {
+    promptTokens: Math.max(0, Math.trunc(usage.promptTokens)),
+    completionTokens: Math.max(0, Math.trunc(usage.completionTokens)),
+    estimatedCostUsd: roundUsd(Math.max(0, usage.estimatedCostUsd - Math.max(0, carriedUsd))),
+  };
+}
+
+function roundUsd(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
 export function holdUsdForKind(
   kind: "FIRST_BUILD" | "PUSH_UPDATE" | "CHAT_EDIT" | "SUMMARY_REFRESH",
   tokenEstimateUsd: number,

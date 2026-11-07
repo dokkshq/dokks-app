@@ -83,11 +83,11 @@ export async function setReviewModeAction(formData: FormData) {
   if (!session) redirect(`/login?next=/dashboard/sites/${siteId}`);
   await blockActAsWrites();
   const mode = String(formData.get("reviewMode") ?? "");
-  if (mode !== "AUTO_PUBLISH" && mode !== "REVIEW") {
+  if (mode !== "REVIEW") {
     return redirectWithToast(
-      `/dashboard/sites/${siteId}?error=Choose+a+review+mode.`,
+      `/dashboard/sites/${siteId}?error=Choose+draft.`,
       "error",
-      "Choose a review mode.",
+      "Choose draft.",
     );
   }
   const prisma = getPrisma();

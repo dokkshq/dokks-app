@@ -19,3 +19,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+        env:
+          APP_URL: https://ci.example.com
+          DOCS_ROOT_DOMAIN: docs.example.com
+          GITHUB_APP_SLUG: dokks-ci
+          NEXT_PUBLIC_PRODUCT_NAME: Dokks
